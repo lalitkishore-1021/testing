@@ -400,10 +400,12 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
         end_time = time.time()
         print(f"[{reg_no}] Sync Complete in {round(end_time - start_time, 2)}s.")
 
-        if not parsed_att and not student_slots and not final_tt:
+        if not parsed_att:
+            # If attendance is empty, the entire scrape is invalid because attendance is 
+            # the primary metric and holds all the subject data.
             out_queue.put({
                 'success': False,
-                'error': 'Data extraction failed or timed out. Please try again later.'
+                'error': 'Data extraction failed (Attendance was empty). Please try again later.'
             })
         else:
             out_queue.put({
