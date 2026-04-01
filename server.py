@@ -242,18 +242,59 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
             out_queue.put({'success': False, 'error': f'Auth Failed: {str(e)}'})
             return
 
-        print(f"[{reg_no}] 3. Auth OK. Starting Sync...")
+        print(f"[{reg_no}] 3. Auth OK. Starting Parallel Sync...")
 
-        def fetch_data_from_main_page(url, label, wait_time=12000):
+        # PARALLEL FETCHING
+        # Page 1: Attendance & Marks
+        # Page 2: Student Slots
+        # Page 3: Master Timetable
+        
+        page_att = page # Reuse main page
+        page_slots = context.new_page()
+        page_master = context.new_page()
+
+        # Define targets
+        targets = [
+            {"page": page_att, "url": "https://academia.srmist.edu.in/#Page:My_Attendance"},
+            {"page": page_slots, "url": "https://academia.srmist.edu.in/#Page:My_Time_Table_2023_24"},
+            {"page": page_master, "url": f"https://academia.srmist.edu.in/#Page:Unified_Time_Table_2025_Batch_{batch}"}
+        ]
+
+        # Trigger all navigations in parallel (well, sequentially within the same browser context)
+        for t in targets:
+            t["page"].goto(t["url"], wait_until="domcontentloaded", timeout=45000)
+
+        # Function to wait and extract tables from a specific page
+        def extract_from_page(target_page, label, required_text=None):
             print(f"[{reg_no}] Fetching {label}...")
             try:
-                page.goto(url, wait_until="domcontentloaded", timeout=60000)
-                page.wait_for_selector("iframe", timeout=45000)
-                # Wait for Zoho JS to finish XHR and render inner tables inside iframe
-                page.wait_for_timeout(wait_time) 
+                # Wait for at least one iframe to appear
+                target_page.wait_for_selector("iframe", timeout=45000)
+                
+                # If a specific text indicator is provided, wait until it appears in any frame
+                if required_text:
+                    text_found = False
+                    for _ in range(30): # 30 seconds max polling
+                        target_page.wait_for_timeout(1000)
+                        for frame in target_page.frames:
+                            try:
+                                # Look for the exact table header we need
+                                if frame.locator(f"text='{required_text}'").count() > 0:
+                                    text_found = True
+                                    break
+                            except: pass
+                        if text_found: break
+                    
+                    if not text_found:
+                        raise Exception(f"Header '{required_text}' did not load in time.")
+                    
+                    # Buffer to let Zoho finish rendering the rest of the table body after header appears
+                    target_page.wait_for_timeout(3000)
+                else:
+                    target_page.wait_for_timeout(5000)
                 
                 all_tables = []
-                for frame in page.frames:
+                for frame in target_page.frames:
                     try:
                         tables = frame.evaluate("""() => {
                             return Array.from(document.querySelectorAll('table')).map(t => 
@@ -275,10 +316,14 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
                 print(f"[{reg_no}] Timeout or error fetching {label}: {e}")
                 return []
 
-        # Fetch Sequentially using the SAME main page for maximum session reliability
-        raw_tables = fetch_data_from_main_page("https://academia.srmist.edu.in/#Page:My_Attendance", "Attendance", 15000)
-        slot_tables = fetch_data_from_main_page("https://academia.srmist.edu.in/#Page:My_Time_Table_2023_24", "Slots", 10000)
-        master_tables = fetch_data_from_main_page(f"https://academia.srmist.edu.in/#Page:Unified_Time_Table_2025_Batch_{batch}", "Master TT", 8000)
+        # Wait for all (manually, as sync_playwright doesn't have an easy gather)
+        # But since they are all in the same context, they load concurrently anyway.
+        raw_tables = extract_from_page(page_att, "Attendance", "Course Code")
+        slot_tables = extract_from_page(page_slots, "Slots", "SLOT")
+        master_tables = extract_from_page(page_master, "Master TT", "Day")
+
+
+
 
         parsed_att = []
         parsed_marks = []
