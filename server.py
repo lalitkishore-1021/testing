@@ -260,18 +260,18 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
             {"page": page_master, "url": f"https://academia.srmist.edu.in/#Page:Unified_Time_Table_2025_Batch_{batch}"}
         ]
 
-        # Trigger all navigations in parallel
+        # Trigger all navigations in parallel (well, sequentially within the same browser context)
         for t in targets:
-            t["page"].goto(t["url"], wait_until="domcontentloaded")
+            t["page"].goto(t["url"], wait_until="domcontentloaded", timeout=45000)
 
         # Function to wait and extract tables from a specific page
         def extract_from_page(target_page, label):
             print(f"[{reg_no}] Fetching {label}...")
             try:
                 # Wait for at least one iframe to appear (Academia uses them for everything)
-                target_page.wait_for_selector("iframe", timeout=15000)
+                target_page.wait_for_selector("iframe", timeout=45000)
                 # Small buffer for ZOHO JS to render tables inside iframes
-                target_page.wait_for_timeout(2000)
+                target_page.wait_for_timeout(4000)
                 
                 all_tables = []
                 for frame in target_page.frames:
@@ -292,8 +292,8 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
                         if tables: all_tables.extend(tables)
                     except: pass
                 return all_tables
-            except:
-                print(f"[{reg_no}] Timeout or error fetching {label}")
+            except Exception as e:
+                print(f"[{reg_no}] Timeout or error fetching {label}: {e}")
                 return []
 
         # Wait for all (manually, as sync_playwright doesn't have an easy gather)
@@ -422,14 +422,20 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
         end_time = time.time()
         print(f"[{reg_no}] Sync Complete in {round(end_time - start_time, 2)}s.")
 
-        out_queue.put({
-            'success': True, 
-            'profile': profile_data,
-            'data': parsed_att,
-            'marks': parsed_marks,
-            'timetable': final_tt,
-            'sync_time': round(end_time - start_time, 2)
-        })
+        if not parsed_att and not student_slots and not final_tt:
+            out_queue.put({
+                'success': False,
+                'error': 'Data extraction failed or timed out. Please try again later.'
+            })
+        else:
+            out_queue.put({
+                'success': True, 
+                'profile': profile_data,
+                'data': parsed_att,
+                'marks': parsed_marks,
+                'timetable': final_tt,
+                'sync_time': round(end_time - start_time, 2)
+            })
 
     except Exception as e:
         print(f"Scraper Exception: {str(e)}")
@@ -445,7 +451,7 @@ def start_session():
     t = threading.Thread(target=scrape_academia_worker, args=(data.get('regNo'), data.get('pwd'), data.get('batch', 1), out_queue))
     t.start()
     try:
-        result = out_queue.get(timeout=150)
+        result = out_queue.get(timeout=240)
         # Auto-save student to DB on every successful sync
         if result.get('success'):
             profile = result.get('profile', {})
