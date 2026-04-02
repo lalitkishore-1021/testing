@@ -1,31 +1,20 @@
-from flask import Flask, request, jsonify, send_file, send_from_directory
-from flask_cors import CORS
-from playwright.sync_api import sync_playwright
 import time
-import os
-import uuid
-import base64
-
 import threading
 import queue
-import subprocess
-import sqlite3
+import os
 import re
+import sqlite3
 import json
 from datetime import datetime
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
+from playwright.sync_api import sync_playwright
 
-# ----- RENDER.COM CRASH FIX -----
-os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "0"
-print("Starting backend... Verifying Chromium installation...")
-subprocess.run(["python", "-m", "playwright", "install", "chromium"], check=False)
-print("Chromium Verification Complete.")
-
-app = Flask(__name__)
+app = Flask(__name__, static_folder='.')
 CORS(app)
 
-# ==========================================
-# DATABASE SETUP
-# ==========================================
+import os
+
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 if DATABASE_URL:
@@ -66,14 +55,6 @@ def init_db():
         cur.execute('''CREATE TABLE IF NOT EXISTS club_events (
             id SERIAL PRIMARY KEY, club_name TEXT NOT NULL, event_title TEXT NOT NULL, event_date TEXT, registration_link TEXT, image_url TEXT,
             created_by TEXT, net_id TEXT, created_at TEXT)''')
-        cur.execute('''CREATE TABLE IF NOT EXISTS campus_polls (
-            id SERIAL PRIMARY KEY, question TEXT NOT NULL, options TEXT NOT NULL, is_active INTEGER DEFAULT 1, created_at TEXT)''')
-        cur.execute('''CREATE TABLE IF NOT EXISTS poll_votes (
-            id SERIAL PRIMARY KEY, poll_id INTEGER, net_id TEXT, option_index INTEGER, created_at TEXT)''')
-        cur.execute('''CREATE TABLE IF NOT EXISTS placements (
-            id SERIAL PRIMARY KEY, company_name TEXT NOT NULL, role TEXT, ctc TEXT, visit_date TEXT, experience TEXT, submitted_by TEXT, net_id TEXT)''')
-        cur.execute('''CREATE TABLE IF NOT EXISTS lost_found (
-            id SERIAL PRIMARY KEY, item_name TEXT NOT NULL, description TEXT, location TEXT, type TEXT, contact_phone TEXT, net_id TEXT, created_at TEXT)''')
     else:
         cur.execute('''CREATE TABLE IF NOT EXISTS students (
             net_id TEXT PRIMARY KEY, name TEXT, register_no TEXT,
@@ -92,14 +73,6 @@ def init_db():
         cur.execute('''CREATE TABLE IF NOT EXISTS club_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT, club_name TEXT NOT NULL, event_title TEXT NOT NULL, event_date TEXT, registration_link TEXT, image_url TEXT,
             created_by TEXT, net_id TEXT, created_at TEXT)''')
-        cur.execute('''CREATE TABLE IF NOT EXISTS campus_polls (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, question TEXT NOT NULL, options TEXT NOT NULL, is_active INTEGER DEFAULT 1, created_at TEXT)''')
-        cur.execute('''CREATE TABLE IF NOT EXISTS poll_votes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, poll_id INTEGER, net_id TEXT, option_index INTEGER, created_at TEXT)''')
-        cur.execute('''CREATE TABLE IF NOT EXISTS placements (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, company_name TEXT NOT NULL, role TEXT, ctc TEXT, visit_date TEXT, experience TEXT, submitted_by TEXT, net_id TEXT)''')
-        cur.execute('''CREATE TABLE IF NOT EXISTS lost_found (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, item_name TEXT NOT NULL, description TEXT, location TEXT, type TEXT, contact_phone TEXT, net_id TEXT, created_at TEXT)''')
     conn.commit()
     cur.close()
     conn.close()
@@ -117,12 +90,23 @@ def save_student_to_db(net_id, name, register_no, att_data, marks_data):
             except: continue
         overall_att = round((total_att / total_cls) * 100, 1) if total_cls > 0 else 0.0
 
-        # Calculate Est CGPA
+        # Calculate Est CGPA (Mimicking Frontend Logic)
         grand_total_obtained = 0
         grand_total_max = 0
         for sub in (marks_data or []):
             try:
                 perf_string = sub.get('Test Performance') or sub.get('performance') or sub.get('marks') or ""
+                # Logic: extract max and obtained using regex matching `/([0-9.]+)\s*\|\s*([0-9.]+)/` (like frontend)
+                # But it's easier: split by '|', if it has '/', left is obtained, right is max?
+                # The frontend regex: `([A-Za-z0-9-]+)\/([0-9.]+)\s*\|\s*([0-9.]+)` 
+                # This seems like it was matching something else, let's look at the regex:
+                # regex = /([A-Za-z0-9-]+)\/([0-9.]+)\s*\|\s*([0-9.]+)/g
+                # match[1] = testName, match[2] = max, match[3] = obtained? 
+                
+                # Let's write a simple python regex that extracts all numbers around '/' and '|'
+                # The frontend is matching: "CT 1/50.0 | 45.0" or similar?
+                # Wait, let's just use Python re module
+                
                 matches = re.findall(r'([A-Za-z0-9-]+)/([0-9.]+)\s*\|\s*([0-9.]+)', perf_string)
                 for test_name, max_str, obtained_str in matches:
                     try:
@@ -142,8 +126,7 @@ def save_student_to_db(net_id, name, register_no, att_data, marks_data):
                 INSERT INTO students (net_id, name, register_no, overall_attendance, est_cgpa, synced_at)
                 VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT(net_id) DO UPDATE SET
-                    name=CASE WHEN EXCLUDED.name != 'Student' THEN EXCLUDED.name ELSE students.name END,
-                    register_no=EXCLUDED.register_no,
+                    name=EXCLUDED.name, register_no=EXCLUDED.register_no,
                     overall_attendance=EXCLUDED.overall_attendance, est_cgpa=EXCLUDED.est_cgpa,
                     synced_at=EXCLUDED.synced_at
             ''', (net_id.lower(), name, register_no.upper(), overall_att, cgpa, datetime.utcnow().isoformat()))
@@ -152,8 +135,7 @@ def save_student_to_db(net_id, name, register_no, att_data, marks_data):
                 INSERT INTO students (net_id, name, register_no, overall_attendance, est_cgpa, synced_at)
                 VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(net_id) DO UPDATE SET
-                    name=CASE WHEN excluded.name != 'Student' THEN excluded.name ELSE students.name END,
-                    register_no=excluded.register_no,
+                    name=excluded.name, register_no=excluded.register_no,
                     overall_attendance=excluded.overall_attendance, est_cgpa=excluded.est_cgpa,
                     synced_at=excluded.synced_at
             ''', (net_id.lower(), name, register_no.upper(), overall_att, cgpa, datetime.utcnow().isoformat()))
@@ -163,264 +145,329 @@ def save_student_to_db(net_id, name, register_no, att_data, marks_data):
     except Exception as e:
         print(f"[DB] save_student_to_db error: {e}")
 
-# ==========================================
-# STATIC FILES SERVING
-# ==========================================
-@app.route("/")
-def home():
-    return send_file("index.html")
 
-@app.route('/images/<path:filename>')
-def serve_images(filename):
-    return send_from_directory('images', filename)
 
-@app.route('/<path:filename>')
-def serve_root_files(filename):
-    return send_from_directory('.', filename)
 
-# ==========================================
-# PLAYWRIGHT SCRAPING LOGIC
-# ==========================================
-active_sessions = {}
-completed_sessions = {}
-session_lock = threading.Lock()
-
-def playwright_worker(session_id, reg_no, pwd, batch, in_queue, out_queue):
+def scrape_academia_worker(reg_no, pwd, batch, out_queue):
     p = None
     browser = None
-    start_time = time.time()
     try:
         p = sync_playwright().start()
-        print(f"[{reg_no}] [Thread] Launching Chromium...")
-
+        print(f"[{reg_no}] Launching Academia Sniper...")
+        
         browser = p.chromium.launch(
             headless=True,
             args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
         )
+        
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            viewport={'width': 1920, 'height': 1080}
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            viewport={'width': 1280, 'height': 720}
         )
         page = context.new_page()
+        page.set_default_timeout(90000)
 
-        print(f"[{reg_no}] [Thread] Navigating to SRM Portal...")
-        page.goto("https://sp.srmist.edu.in/srmiststudentportal/students/loginManager/youLogin.jsp")
+        if "@" not in reg_no: reg_no += "@srmist.edu.in"
 
-        print(f"[{reg_no}] [Thread] Waiting for login form...")
-        page.wait_for_selector('input[type="text"]', timeout=15000)
-
-        print(f"[{reg_no}] [Thread] Filling credentials...")
-        page.fill('input[type="text"]', reg_no)
-        page.fill('input[type="password"]', pwd)
-
-        captcha_input = page.locator('input[placeholder*="captcha" i], input[placeholder*="Captcha" i]').first
-
-        if captcha_input.count() > 0:
-            print(f"[{reg_no}] [Thread] Captcha DETECTED! Taking screenshot...")
-            captcha_img = page.locator('img[src*="captcha" i], img[id*="captcha" i]').first
-            if captcha_img.count() == 0:
-                captcha_img = captcha_input.locator("xpath=..").locator("xpath=..")
-                if captcha_img.count() == 0:
-                    captcha_img = captcha_input
-
-            time.sleep(1)
-            img_bytes = captcha_img.screenshot()
-            b64_img = base64.b64encode(img_bytes).decode('utf-8')
-
-            out_queue.put({
-                'requires_captcha': True,
-                'captcha_base64': f"data:image/png;base64,{b64_img}"
-            })
-
-            print(f"[{reg_no}] [Thread] Waiting for user to solve Captcha...")
-            try:
-                user_msg = in_queue.get(timeout=180)
-            except queue.Empty:
-                print(f"[{reg_no}] [Thread] User took too long. Aborting.")
-                return
-
-            if user_msg.get('action') == 'kill':
-                return
-
-            captcha_text = user_msg.get('captcha_text')
-            print(f"[{reg_no}] [Thread] Got captcha: '{captcha_text}'. Submitting...")
-            captcha_input.fill(captcha_text)
-            captcha_input.press('Enter')
-
-        else:
-            print(f"[{reg_no}] [Thread] No Captcha needed. Submitting...")
-            page.press('input[type="password"]', 'Enter')
-            out_queue.put({'requires_captcha': False})
-
-        print(f"[{reg_no}] [Thread] Waiting for dashboard...")
+        print(f"[{reg_no}] 1. Loading Academia...")
         try:
-            page.wait_for_selector("text=Attendance Details, a:has-text('Attendance Details'), .navbar-brand >> visible=true", timeout=40000)
-        except:
-            print(f"[{reg_no}] Dashboard timeout. Checking for errors...")
-            error_el = page.locator("span, td, div", has_text="Invalid").first
-            if error_el.count() > 0:
-                error_text = error_el.inner_text().strip()
-                out_queue.put({'success': False, 'error': f'Portal Error: {error_text}'})
-                return
-            print(f"[{reg_no}] Attempting direct URL fallback...")
-
-        print(f"[{reg_no}] [Thread] Navigating to Attendance...")
-        try:
-            attendance_link = page.locator("a:has-text('Attendance Details'), #link_8").first
-            attendance_link.click(timeout=10000)
-        except:
-            print(f"[{reg_no}] Could not click link. Using direct URL...")
-            page.goto("https://sp.srmist.edu.in/srmiststudentportal/students/report/viewAttendance.jsp")
-
-        print(f"[{reg_no}] [Thread] Waiting for attendance table...")
-        try:
-            page.wait_for_selector("table, #divMainDetails table", timeout=20000)
-        except:
-            out_queue.put({'success': False, 'error': 'Attendance table never loaded. Session may have expired.'})
+            page.goto("https://academia.srmist.edu.in/", wait_until="networkidle", timeout=60000)
+        except Exception as e:
+            out_queue.put({'success': False, 'error': f'Portal failed to load: {str(e)}'})
             return
 
-        print(f"[{reg_no}] [Thread] Parsing attendance rows...")
-        rows_locator = page.locator("table tr")
-        rows_count = rows_locator.count()
-        live_scraped_data = []
-
-        for idx in range(1, rows_count):
-            cols = rows_locator.nth(idx).locator("td")
-            col_count = cols.count()
-            if col_count >= 6:
+        def find_in_frames(selector, filter_text=None, filter_not_text=None):
+            loc = page.locator(selector)
+            if filter_text: loc = loc.filter(has_text=re.compile(filter_text, re.IGNORECASE))
+            if filter_not_text: loc = loc.filter(has_not_text=re.compile(filter_not_text, re.IGNORECASE))
+            if loc.count() > 0: return loc.first
+            for frame in page.frames:
                 try:
-                    subject_name_text = cols.nth(1).inner_text().strip()
-                    code_text = cols.nth(0).inner_text().strip()
-                    subject_name = subject_name_text if len(subject_name_text) > 3 else code_text
+                    loc = frame.locator(selector)
+                    if filter_text: loc = loc.filter(has_text=re.compile(filter_text, re.IGNORECASE))
+                    if filter_not_text: loc = loc.filter(has_not_text=re.compile(filter_not_text, re.IGNORECASE))
+                    if loc.count() > 0: return loc.first
+                except: continue
+            return None
+            
+        # Login Logic
+        try:
+            email_input = find_in_frames('input[type="email"], input[type="text"], input[name="LOGIN_ID"]', filter_not_text="hidden")
+            if not email_input: raise Exception("Email box not found")
+            email_input.fill(reg_no, force=True)
+            
+            next_btn = find_in_frames('button, input[type="submit"]', filter_text="next|continue")
+            if next_btn: next_btn.click(force=True, timeout=5000)
+            else: page.keyboard.press("Enter")
 
-                    max_hours_str = cols.nth(col_count - 4).inner_text().strip()
-                    attended_hours_str = cols.nth(col_count - 3).inner_text().strip()
+            pwd_input = None
+            for _ in range(10): 
+                pwd_input = find_in_frames('input[type="password"], input[name="PASSWORD"]')
+                if pwd_input: break
+                page.wait_for_timeout(1000)
+                
+            if not pwd_input: raise Exception("Password box not found")
+            pwd_input.type(pwd, delay=30) 
+            
+            submit_btn = find_in_frames('button, input[type="submit"]', filter_text="sign in|login|submit|verify")
+            if submit_btn: submit_btn.click(force=True, timeout=5000)
+            else: page.keyboard.press("Enter")
+            page.wait_for_timeout(5000) 
 
-                    if max_hours_str.isdigit() and attended_hours_str.isdigit():
-                        live_scraped_data.append({
-                            'courseTitle': subject_name,
-                            'attended': int(attended_hours_str),
-                            'total': int(max_hours_str)
-                        })
-                except Exception as parse_err:
-                    print(f"Row skipped: {parse_err}")
+            terminate_btn = page.locator('button, a').filter(has_text=re.compile(r"terminate", re.IGNORECASE)).first
+            if terminate_btn.count() > 0: terminate_btn.click(force=True); page.wait_for_timeout(4000)
+        except Exception as e:
+            out_queue.put({'success': False, 'error': f'Auth Failed: {str(e)}'})
+            return
 
-        end_time = time.time()
-        print(f"[{reg_no}] Sync done in {round(end_time - start_time, 2)}s. {len(live_scraped_data)} courses found.")
+        def get_all_tables():
+            try:
+                page.wait_for_selector("iframe", timeout=10000)
+            except Exception as e:
+                print("Wait for iframe error:", str(e))
+            all_tables = []
+            for frame in page.frames:
+                try:
+                    tables = frame.evaluate("""() => {
+                        return Array.from(document.querySelectorAll('table')).map(t => 
+                            Array.from(t.querySelectorAll('tr')).map(tr => {
+                                let rowArr = [];
+                                Array.from(tr.querySelectorAll('td, th')).forEach(td => {
+                                    let span = td.colSpan || 1;
+                                    let text = td.innerText.trim();
+                                    for(let i=0; i<span; i++) rowArr.push(text);
+                                });
+                                return rowArr;
+                            }).filter(row => row.length > 0)
+                        ).filter(table => table.length > 0);
+                    }""")
+                    if tables: all_tables.extend(tables)
+                except: pass
+            return all_tables
 
-        if len(live_scraped_data) > 0:
-            profile_data = {
-                "name": "STUDENT",
-                "regNo": reg_no.upper(),
-                "course": "B.Tech",
-                "semester": "Current"
-            }
-            out_queue.put({
-                'success': True,
-                'profile': profile_data,
-                'data': live_scraped_data,
-                'marks': [],
-                'timetable': {"1": [], "2": [], "3": [], "4": [], "5": []},
-                'sync_time': round(end_time - start_time, 2)
-            })
-        else:
-            out_queue.put({'success': False, 'error': 'Table found but no attendance data. Try again.'})
+        def get_col_index(headers, *keywords):
+            for i, h in enumerate(headers):
+                h_lower = str(h).lower()
+                if any(kw in h_lower for kw in keywords):
+                    return i
+            return -1
 
-    except Exception as fn_err:
-        print(f"[{reg_no}] Critical failure: {str(fn_err)}")
-        out_queue.put({'success': False, 'error': f'Backend error: {str(fn_err)}'})
+        # --- ATTENDANCE & MARKS ---
+        print(f"[{reg_no}] 5. Scoping Attendance...")
+        page.goto("https://academia.srmist.edu.in/#Page:My_Attendance")
+        page.wait_for_timeout(3000)
+        page.reload(wait_until="networkidle")
+        page.wait_for_timeout(5000)
+
+        raw_tables = get_all_tables()
+        parsed_att = []
+        parsed_marks = []
+
+        # Profile Extraction
+        profile_data = {
+            "name": "STUDENT",
+            "regNo": reg_no.split('@')[0].upper(),
+            "course": "B.Tech",
+            "semester": "Current"
+        }
+        for table in raw_tables:
+            if not table: continue
+            for row in table:
+                if len(row) >= 2:
+                    for i in range(len(row) - 1):
+                        k = str(row[i]).replace(':', '').strip().lower()
+                        v = str(row[i+1]).replace(':', '').strip()
+                        if "name" in k and not "father" in k and not "mother" in k:
+                            if len(v) > 2 and profile_data["name"] == "STUDENT": profile_data["name"] = v
+                        elif "program" in k or "course" in k or "degree" in k or "branch" in k:
+                            if len(v) > 2: profile_data["course"] = v[:35]
+                        elif "semester" in k:
+                            if len(v) > 0 and len(v) <= 2: profile_data["semester"] = v
+
+        for table in raw_tables:
+            if not table: continue
+            headers = [str(h).lower() for h in table[0]]
+            header_str = " ".join(headers)
+
+            # Dynamic Attendance Parsing
+            if "hours conducted" in header_str and "absent" in header_str:
+                try:
+                    idx_code = get_col_index(headers, "code")
+                    idx_title = get_col_index(headers, "title")
+                    idx_cond = get_col_index(headers, "conducted")
+                    idx_abs = get_col_index(headers, "absent")
+                    
+                    if -1 in (idx_code, idx_title, idx_cond, idx_abs): continue
+                    
+                    for row in table[1:]:
+                        if len(row) > max(idx_cond, idx_abs):
+                            cond = int(float(row[idx_cond] or 0))
+                            absent = int(float(row[idx_abs] or 0))
+                            parsed_att.append({
+                                "courseTitle": f"{row[idx_code]} - {row[idx_title][:20]}",
+                                "attended": max(0, cond - absent),
+                                "total": cond
+                            })
+                except Exception as e:
+                    print("Parsing error (Attendance):", str(e))
+                    continue
+
+            # Dynamic Marks Parsing
+            elif any(kw in header_str for kw in ["test performance", "assessment", "marks", "internal"]):
+                try:
+                    idx_code = get_col_index(headers, "code")
+                    idx_perf = get_col_index(headers, "performance", "assessment", "marks", "internal")
+                    
+                    if idx_code == -1 or idx_perf == -1: continue
+                    
+                    for row in table[1:]:
+                        if len(row) > idx_perf:
+                            parsed_marks.append({
+                                "courseTitle": row[idx_code],
+                                "Test Performance": row[idx_perf].replace('\n', ' | ')
+                            })
+                except Exception as e:
+                    print("Parsing error (Marks):", str(e))
+                    continue
+
+        # --- TIMETABLE STEP 1 (STUDENT SLOTS) ---
+        print(f"[{reg_no}] 6. Scoping Registered Slots...")
+        student_slots = {}
+        # Reverted 2024_25 back to 2023_24 based on Academia's weird hardcoded URL hash
+        page.goto("https://academia.srmist.edu.in/#Page:My_Time_Table_2023_24")
+        page.wait_for_timeout(5000)
+        
+        slot_tables = get_all_tables()
+        for table in slot_tables:
+            if not table: continue
+            headers = [str(h).lower() for h in table[0]]
+            header_str = " ".join(headers)
+            
+            if "slot" in header_str and "code" in header_str:
+                try:
+                    idx_code = get_col_index(headers, "code")
+                    idx_title = get_col_index(headers, "title")
+                    idx_slot = get_col_index(headers, "slot")
+                    idx_room = get_col_index(headers, "room")
+                    
+                    if -1 in (idx_code, idx_title, idx_slot, idx_room): continue
+                    
+                    for row in table[1:]:
+                        if len(row) > idx_room:
+                            # Refined Regex matching (matches A, P49, PT2, etc)
+                            slots_found = re.findall(r'\b[A-Z]{1,2}\d*\b', row[idx_slot])
+                            for s in slots_found:
+                                student_slots[s] = {
+                                    "subject": f"{row[idx_code]} - {row[idx_title]}",
+                                    "room": row[idx_room]
+                                }
+                except Exception as e:
+                    print("Parsing error (Slots):", str(e))
+                    continue
+
+        # --- TIMETABLE STEP 2 (MASTER TIMINGS) ---
+        print(f"[{reg_no}] 7. Mapping to Master (Batch {batch})...")
+        final_tt = {"1": [], "2": [], "3": [], "4": [], "5": []}
+        page.goto(f"https://academia.srmist.edu.in/#Page:Unified_Time_Table_2025_Batch_{batch}")
+        page.wait_for_timeout(5000)
+        
+        master_tables = get_all_tables()
+        for table in master_tables:
+            if not table: continue
+            
+            time_cols = []
+            from_row = []
+            to_row = []
+            start_row = -1
+            
+            for r_idx, row in enumerate(table):
+                first_cell = str(row[0]).lower().replace('\n', ' ').strip()
+                
+                if "from" in first_cell and "to" not in first_cell: from_row = row[1:]
+                elif "to" in first_cell and "from" not in first_cell: to_row = row[1:]
+                elif "from" in first_cell and "to" in first_cell:
+                    time_cols = [str(c).replace('\n', ' ') for c in row[1:]]
+                elif any(x in first_cell for x in ["hour", "order", "time", "period"]):
+                    if not time_cols and not from_row:
+                        time_cols = [str(c).replace('\n', ' ') for c in row[1:]]
+                elif "day" in first_cell and any(str(i) in first_cell for i in range(1, 6)):
+                    start_row = r_idx
+                    break
+                    
+            if not time_cols and from_row and to_row:
+                for f, t in zip(from_row, to_row):
+                    time_cols.append(f"{f} - {t}")
+                    
+            if start_row != -1:
+                for row in table[start_row:]:
+                    try:
+                        day_match = re.search(r'\d+', row[0])
+                        if not day_match: continue
+                        day_order = day_match.group()
+                        
+                        if day_order in final_tt:
+                            seen_entries = set()
+                            for i, cell in enumerate(row[1:]):
+                                slots_in_cell = re.findall(r'\b[A-Z]{1,2}\d*\b', cell)
+                                for s in slots_in_cell:
+                                    if s in student_slots:
+                                        t_str = time_cols[i] if i < len(time_cols) else f"Period {i+1}"
+                                        t_str = re.sub(r'\s+', ' ', t_str).strip()
+                                        
+                                        entry_key = f"{t_str}-{student_slots[s]['subject']}"
+                                        if entry_key not in seen_entries:
+                                            final_tt[day_order].append({
+                                                "time": t_str,
+                                                "subject": student_slots[s]['subject'],
+                                                "room": student_slots[s]['room']
+                                            })
+                                            seen_entries.add(entry_key)
+                    except Exception as e:
+                        print("Parsing error (Master TT Row):", str(e))
+                        continue
+
+        # Debug Logging for Empty Parsing
+        if not parsed_att and not parsed_marks and not student_slots:
+            try:
+                with open("debug_tables.txt", "w", encoding="utf-8") as f:
+                    f.write("RAW TABLES:\n" + str(raw_tables) + "\n\nSLOT TABLES:\n" + str(slot_tables) + "\n\nMASTER TABLES:\n" + str(master_tables))
+                print(f"[{reg_no}] Empty arrays detected. Saved to debug_tables.txt")
+            except Exception as e:
+                print(f"Failed to write debug file: {str(e)}")
+
+        out_queue.put({
+            'success': True, 
+            'profile': profile_data,
+            'data': parsed_att,
+            'marks': parsed_marks,
+            'timetable': final_tt
+        })
+
+    except Exception as e:
+        out_queue.put({'success': False, 'error': f"Scraper Exception: {str(e)}"})
     finally:
-        print(f"[{reg_no}] [Thread] Tearing down browser.")
-        if browser:
-            try: browser.close()
-            except: pass
-        if p:
-            try: p.stop()
-            except: pass
-
-
+        if browser: browser.close()
+        if p: p.stop()
 
 @app.route('/api/start_session', methods=['POST'])
 def start_session():
     data = request.json
-    reg_no = data.get('regNo')
-    pwd = data.get('pwd')
-
-    if not reg_no or not pwd:
-        return jsonify({'success': False, 'error': 'Registration number and password are required.'}), 400
-
-    session_id = str(uuid.uuid4())
-    in_queue = queue.Queue()
     out_queue = queue.Queue()
-    
-    with session_lock:
-        active_sessions[session_id] = {
-            'in_queue': in_queue,
-            'out_queue': out_queue,
-            'reg_no': reg_no,
-            'timestamp': time.time()
-        }
-
-    batch = data.get('batch', 1)
-    t = threading.Thread(target=playwright_worker, args=(session_id, reg_no, pwd, batch, in_queue, out_queue))
-    t.daemon = True
+    t = threading.Thread(target=scrape_academia_worker, args=(data.get('regNo'), data.get('pwd'), data.get('batch', 1), out_queue))
     t.start()
-    
-    return jsonify({'success': True, 'session_id': session_id, 'status': 'processing'})
-
-@app.route('/api/session_status/<session_id>', methods=['GET'])
-def session_status(session_id):
-    with session_lock:
-        if session_id in completed_sessions:
-            return jsonify(completed_sessions.pop(session_id))
-        session_data = active_sessions.get(session_id)
-        
-    if not session_data:
-        return jsonify({'success': False, 'error': 'Session invalid or expired.'}), 404
-
     try:
-        result = session_data['out_queue'].get_nowait()
-        if result.get('requires_captcha'):
-            return jsonify({
-                'success': True,
-                'status': 'requires_captcha',
-                'session_id': session_id,
-                'captcha_base64': result.get('captcha_base64')
-            })
-        else:
-            if result.get('success'):
-                raw_reg = session_data['reg_no']
-                net_id = raw_reg.split('@')[0] if '@' in raw_reg else raw_reg
-                save_student_to_db(net_id, 'Student', net_id.upper(), result.get('data', []), [])
-            
-            result['status'] = 'completed'
-            with session_lock:
-                completed_sessions[session_id] = result
-                active_sessions.pop(session_id, None)
-            return jsonify(result)
-            
+        result = out_queue.get(timeout=150)
+        # Auto-save student to DB on every successful sync
+        if result.get('success'):
+            profile = result.get('profile', {})
+            raw_reg = data.get('regNo', '')
+            net_id = raw_reg.split('@')[0]          # e.g. ra2511026010324
+            register_no = net_id.upper()            # e.g. RA2511026010324
+            name = profile.get('name', 'Student')
+            save_student_to_db(net_id, name, register_no, result.get('data', []), result.get('marks', []))
+        return jsonify(result)
     except queue.Empty:
-        return jsonify({'success': True, 'status': 'processing', 'session_id': session_id})
-
-@app.route('/api/submit_captcha', methods=['POST'])
-def submit_captcha():
-    data = request.json
-    session_id = data.get('session_id')
-    captcha_text = data.get('captcha_text')
-
-    with session_lock:
-        session_data = active_sessions.get(session_id)
-        
-    if not session_data:
-        return jsonify({'success': False, 'error': 'Session timed out.'}), 400
-
-    session_data['in_queue'].put({'action': 'submit', 'captcha_text': captcha_text})
-    
-    return jsonify({'success': True, 'status': 'processing', 'session_id': session_id})
-
-# ==========================================
-# DATABASE ROUTES
-# ==========================================
+        return jsonify({'success': False, 'error': 'Server Timeout. Check internet speed.'})
 
 @app.route('/api/save_student', methods=['POST'])
 def save_student():
@@ -504,6 +551,7 @@ def submit_project():
 
     conn = get_db()
     cur = conn.cursor()
+    tz = 'IST' # Simplified wrapper
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     try:
@@ -529,6 +577,8 @@ def submit_project():
         conn.close()
 
     return jsonify({'success': True})
+
+# --- NEW MARKETPLACE ROUTES ---
 
 @app.route('/api/marketplace', methods=['GET'])
 def get_marketplace():
@@ -583,6 +633,8 @@ def submit_marketplace():
         conn.close()
 
     return jsonify({'success': True})
+
+# --- CAMPUS WALL ROUTES ---
 
 @app.route('/api/wall', methods=['GET'])
 def get_wall():
@@ -646,12 +698,15 @@ def like_wall(post_id):
         conn.close()
     return jsonify({'success': True})
 
+# --- CAB SHARING ROUTES ---
+
 @app.route('/api/cabs', methods=['GET'])
 def get_cabs():
     conn = get_db()
     
     if DATABASE_URL:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # Delete old trips ideally, but for now just fetch recent ones
         cur.execute("SELECT * FROM cab_sharing ORDER BY travel_date ASC, travel_time ASC LIMIT 100")
         rows = cur.fetchall()
         cabs = [dict(row) for row in rows]
@@ -699,6 +754,8 @@ def submit_cab():
         conn.close()
 
     return jsonify({'success': True})
+
+# --- EVENTS & CLUB RADAR ROUTES ---
 
 @app.route('/api/events', methods=['GET'])
 def get_events():
@@ -754,140 +811,13 @@ def submit_event():
 
     return jsonify({'success': True})
 
+@app.route('/ping')
+def ping(): return 'pong', 200
 
+@app.route('/')
+def serve_index(): return send_from_directory('.', 'index.html')
+@app.route('/<path:path>')
+def serve_static(path): return send_from_directory('.', path)
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5001)) # Changed to 5001 to avoid VS Code clash
-    app.run(host='0.0.0.0', port=port, debug=True)
-
-# ==========================================
-# OVERTAKE PHASE ROUTES
-# ==========================================
-
-@app.get('/api/polls/active')
-def get_active_poll():
-    conn = get_db()
-    try:
-        if DATABASE_URL:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("SELECT * FROM campus_polls WHERE is_active = 1 ORDER BY id DESC LIMIT 1")
-                row = cur.fetchone()
-                if row:
-                    cur.execute("SELECT option_index, COUNT(*) as count FROM poll_votes WHERE poll_id = %s GROUP BY option_index", (row['id'],))
-                    votes = {r['option_index']: r['count'] for r in cur.fetchall()}
-                    row = dict(row)
-                    row['votes'] = votes
-                    return jsonify(row)
-        else:
-            row = conn.execute("SELECT * FROM campus_polls WHERE is_active = 1 ORDER BY id DESC LIMIT 1").fetchone()
-            if row:
-                row = dict(row)
-                votes_rows = conn.execute("SELECT option_index, COUNT(*) as count FROM poll_votes WHERE poll_id = ? GROUP BY option_index", (row['id'],)).fetchall()
-                row['votes'] = {r['option_index']: r['count'] for r in votes_rows}
-                return jsonify(row)
-                
-        # Default seeded poll if empty
-        default_poll = {
-            'id': 1, 'question': 'Is the Mess Food edible today?',
-            'options': json.dumps(["Yes, surprisingly!", "No, skip it.", "Safe to Bunk!"]),
-            'votes': {}, 'is_active': 1, 'created_at': datetime.now().isoformat()
-        }
-        return jsonify(default_poll)
-    finally:
-        conn.close()
-
-@app.post('/api/polls/vote')
-def vote_poll():
-    d = request.json
-    conn = get_db()
-    cur = conn.cursor()
-    try:
-        net_id = d.get('net_id', 'Anonymous')
-        if DATABASE_URL:
-            cur.execute("SELECT id FROM poll_votes WHERE poll_id = %s AND net_id = %s", (d['poll_id'], net_id))
-        else:
-            cur.execute("SELECT id FROM poll_votes WHERE poll_id = ? AND net_id = ?", (d['poll_id'], net_id))
-            
-        if cur.fetchone():
-            return jsonify({"success": False, "error": "Already voted"}), 400
-            
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        if DATABASE_URL:
-            cur.execute("INSERT INTO poll_votes (poll_id, net_id, option_index, created_at) VALUES (%s, %s, %s, %s)",
-                       (d['poll_id'], net_id, d['option_index'], now))
-        else:
-            cur.execute("INSERT INTO poll_votes (poll_id, net_id, option_index, created_at) VALUES (?, ?, ?, ?)",
-                       (d['poll_id'], net_id, d['option_index'], now))
-        conn.commit()
-        return jsonify({"success": True})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-    finally:
-        conn.close()
-
-@app.get('/api/placements')
-def get_placements():
-    conn = get_db()
-    try:
-        if DATABASE_URL:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("SELECT * FROM placements ORDER BY id DESC LIMIT 50")
-                rows = cur.fetchall()
-        else:
-            rows = [dict(r) for r in conn.execute("SELECT * FROM placements ORDER BY id DESC LIMIT 50").fetchall()]
-        return jsonify(list(rows))
-    finally:
-        conn.close()
-
-@app.post('/api/placements/submit')
-def submit_placement():
-    d = request.json
-    conn = get_db()
-    cur = conn.cursor()
-    try:
-        if DATABASE_URL:
-            cur.execute("INSERT INTO placements (company_name, role, ctc, visit_date, experience, submitted_by, net_id) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                       (d['company_name'], d.get('role'), d.get('ctc'), d.get('visit_date'), d.get('experience'), d.get('submitted_by'), d.get('net_id')))
-        else:
-            cur.execute("INSERT INTO placements (company_name, role, ctc, visit_date, experience, submitted_by, net_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                       (d['company_name'], d.get('role'), d.get('ctc'), d.get('visit_date'), d.get('experience'), d.get('submitted_by'), d.get('net_id')))
-        conn.commit()
-        return jsonify({"success": True})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-    finally:
-        conn.close()
-
-@app.get('/api/lostfound')
-def get_lostfound():
-    conn = get_db()
-    try:
-        if DATABASE_URL:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("SELECT * FROM lost_found ORDER BY id DESC LIMIT 50")
-                rows = cur.fetchall()
-        else:
-            rows = [dict(r) for r in conn.execute("SELECT * FROM lost_found ORDER BY id DESC LIMIT 50").fetchall()]
-        return jsonify(list(rows))
-    finally:
-        conn.close()
-
-@app.post('/api/lostfound/submit')
-def submit_lostfound():
-    d = request.json
-    conn = get_db()
-    cur = conn.cursor()
-    try:
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        if DATABASE_URL:
-            cur.execute("INSERT INTO lost_found (item_name, description, location, type, contact_phone, net_id, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                       (d['item_name'], d.get('description'), d.get('location'), d['type'], d.get('contact_phone'), d.get('net_id'), now))
-        else:
-            cur.execute("INSERT INTO lost_found (item_name, description, location, type, contact_phone, net_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                       (d['item_name'], d.get('description'), d.get('location'), d['type'], d.get('contact_phone'), d.get('net_id'), now))
-        conn.commit()
-        return jsonify({"success": True})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-    finally:
-        conn.close()
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
