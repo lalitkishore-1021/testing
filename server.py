@@ -286,26 +286,23 @@ def playwright_worker(session_id, reg_no, pwd, batch, in_queue, out_queue):
 
         # Function to wait and extract tables from a specific page
         def extract_from_page(target_page, label):
-            print(f"[{reg_no}] Fetching {label}...")
             all_tables = []
             try:
-                # Wait for iframe to appear
+                # Smart wait: wait until a real <table> appears (Zoho renders async)
+                # This is much better than a fixed timer - exits the moment content is ready
                 try:
-                    target_page.wait_for_selector("iframe", timeout=25000)
-                    print(f"[{reg_no}] [{label}] iframe found. Waiting 12s for Zoho render...")
+                    print(f"[{reg_no}] [{label}] Waiting for table content (up to 90s)...")
+                    target_page.wait_for_selector("table", timeout=90000)
+                    print(f"[{reg_no}] [{label}] Table found! Extracting now...")
                 except Exception as te:
-                    print(f"[{reg_no}] [{label}] NO iframe found: {te}")
-
-                # Wait for Zoho JS to fully render table content
-                target_page.wait_for_timeout(12000)
+                    print(f"[{reg_no}] [{label}] No <table> found in 90s: {str(te)[:80]}. Trying anyway.")
 
                 frames = target_page.frames
-                print(f"[{reg_no}] [{label}] Total frames: {len(frames)}")
+                print(f"[{reg_no}] [{label}] Scanning {len(frames)} frames...")
 
                 for fi, frame in enumerate(frames):
-                    frame_url = "unknown"
-                    try:
-                        frame_url = frame.url[:80]
+                    frame_url = "?"
+                    try: frame_url = frame.url[:80]
                     except: pass
                     try:
                         tables = frame.evaluate("""() => {
@@ -321,13 +318,12 @@ def playwright_worker(session_id, reg_no, pwd, batch, in_queue, out_queue):
                                 }).filter(row => row.length > 0)
                             ).filter(table => table.length > 0);
                         }""")
-                        print(f"[{reg_no}] [{label}] Frame[{fi}] url={frame_url}: {len(tables)} tables")
-                        if tables:
-                            all_tables.extend(tables)
+                        print(f"[{reg_no}] [{label}] Frame[{fi}] ({frame_url}): {len(tables)} tables")
+                        if tables: all_tables.extend(tables)
                     except Exception as fe:
-                        print(f"[{reg_no}] [{label}] Frame[{fi}] url={frame_url} ERROR: {type(fe).__name__}: {str(fe)[:120]}")
+                        print(f"[{reg_no}] [{label}] Frame[{fi}] ({frame_url}) ERROR: {type(fe).__name__}: {str(fe)[:100]}")
 
-                # Also try main page body (some Zoho versions render directly)
+                # Also scan main page body directly
                 try:
                     main_tables = target_page.evaluate("""() => {
                         return Array.from(document.querySelectorAll('table')).map(t =>
@@ -343,16 +339,17 @@ def playwright_worker(session_id, reg_no, pwd, batch, in_queue, out_queue):
                         ).filter(table => table.length > 0);
                     }""")
                     if main_tables:
-                        print(f"[{reg_no}] [{label}] Main page body: {len(main_tables)} tables")
+                        print(f"[{reg_no}] [{label}] Main page body: {len(main_tables)} tables found!")
                         all_tables.extend(main_tables)
                 except Exception as me:
                     print(f"[{reg_no}] [{label}] Main page eval error: {me}")
 
-                print(f"[{reg_no}] [{label}] TOTAL tables collected: {len(all_tables)}")
+                print(f"[{reg_no}] [{label}] TOTAL: {len(all_tables)} tables")
                 return all_tables
             except Exception as ex:
                 print(f"[{reg_no}] [{label}] CRITICAL error: {ex}")
                 return []
+
 
         raw_tables = extract_from_page(page_att, "Attendance")
 
