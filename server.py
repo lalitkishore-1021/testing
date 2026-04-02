@@ -287,18 +287,29 @@ def playwright_worker(session_id, reg_no, pwd, batch, in_queue, out_queue):
         # Function to wait and extract tables from a specific page
         def extract_from_page(target_page, label):
             print(f"[{reg_no}] Fetching {label}...")
+            all_tables = []
             try:
-                # Wait for iframe to appear with generous timeout
-                target_page.wait_for_selector("iframe", timeout=25000)
-                # Wait for Zoho JS to render tables INSIDE iframes - crucial!
-                target_page.wait_for_timeout(8000)
-                print(f"[{reg_no}] Extracting tables from {label}...")
-                
-                all_tables = []
-                for frame in target_page.frames:
+                # Wait for iframe to appear
+                try:
+                    target_page.wait_for_selector("iframe", timeout=25000)
+                    print(f"[{reg_no}] [{label}] iframe found. Waiting 12s for Zoho render...")
+                except Exception as te:
+                    print(f"[{reg_no}] [{label}] NO iframe found: {te}")
+
+                # Wait for Zoho JS to fully render table content
+                target_page.wait_for_timeout(12000)
+
+                frames = target_page.frames
+                print(f"[{reg_no}] [{label}] Total frames: {len(frames)}")
+
+                for fi, frame in enumerate(frames):
+                    frame_url = "unknown"
+                    try:
+                        frame_url = frame.url[:80]
+                    except: pass
                     try:
                         tables = frame.evaluate("""() => {
-                            return Array.from(document.querySelectorAll('table')).map(t => 
+                            return Array.from(document.querySelectorAll('table')).map(t =>
                                 Array.from(t.querySelectorAll('tr')).map(tr => {
                                     let rowArr = [];
                                     Array.from(tr.querySelectorAll('td, th')).forEach(td => {
@@ -310,12 +321,37 @@ def playwright_worker(session_id, reg_no, pwd, batch, in_queue, out_queue):
                                 }).filter(row => row.length > 0)
                             ).filter(table => table.length > 0);
                         }""")
-                        if tables: all_tables.extend(tables)
-                    except: pass
-                print(f"[{reg_no}] Found {len(all_tables)} tables in {label}")
+                        print(f"[{reg_no}] [{label}] Frame[{fi}] url={frame_url}: {len(tables)} tables")
+                        if tables:
+                            all_tables.extend(tables)
+                    except Exception as fe:
+                        print(f"[{reg_no}] [{label}] Frame[{fi}] url={frame_url} ERROR: {type(fe).__name__}: {str(fe)[:120]}")
+
+                # Also try main page body (some Zoho versions render directly)
+                try:
+                    main_tables = target_page.evaluate("""() => {
+                        return Array.from(document.querySelectorAll('table')).map(t =>
+                            Array.from(t.querySelectorAll('tr')).map(tr => {
+                                let rowArr = [];
+                                Array.from(tr.querySelectorAll('td, th')).forEach(td => {
+                                    let span = td.colSpan || 1;
+                                    let text = td.innerText.trim();
+                                    for(let i=0; i<span; i++) rowArr.push(text);
+                                });
+                                return rowArr;
+                            }).filter(row => row.length > 0)
+                        ).filter(table => table.length > 0);
+                    }""")
+                    if main_tables:
+                        print(f"[{reg_no}] [{label}] Main page body: {len(main_tables)} tables")
+                        all_tables.extend(main_tables)
+                except Exception as me:
+                    print(f"[{reg_no}] [{label}] Main page eval error: {me}")
+
+                print(f"[{reg_no}] [{label}] TOTAL tables collected: {len(all_tables)}")
                 return all_tables
             except Exception as ex:
-                print(f"[{reg_no}] Error fetching {label}: {ex}")
+                print(f"[{reg_no}] [{label}] CRITICAL error: {ex}")
                 return []
 
         raw_tables = extract_from_page(page_att, "Attendance")
@@ -329,6 +365,7 @@ def playwright_worker(session_id, reg_no, pwd, batch, in_queue, out_queue):
         page_master = context.new_page()
         page_master.goto(f"https://academia.srmist.edu.in/#Page:Unified_Time_Table_2025_Batch_{batch}", wait_until="domcontentloaded")
         master_tables = extract_from_page(page_master, "Master TT")
+
 
         parsed_att = []
         parsed_marks = []
