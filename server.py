@@ -5,6 +5,7 @@ import time
 import os
 import uuid
 import base64
+
 import threading
 import queue
 import subprocess
@@ -65,6 +66,14 @@ def init_db():
         cur.execute('''CREATE TABLE IF NOT EXISTS club_events (
             id SERIAL PRIMARY KEY, club_name TEXT NOT NULL, event_title TEXT NOT NULL, event_date TEXT, registration_link TEXT, image_url TEXT,
             created_by TEXT, net_id TEXT, created_at TEXT)''')
+        cur.execute('''CREATE TABLE IF NOT EXISTS campus_polls (
+            id SERIAL PRIMARY KEY, question TEXT NOT NULL, options TEXT NOT NULL, is_active INTEGER DEFAULT 1, created_at TEXT)''')
+        cur.execute('''CREATE TABLE IF NOT EXISTS poll_votes (
+            id SERIAL PRIMARY KEY, poll_id INTEGER, net_id TEXT, option_index INTEGER, created_at TEXT)''')
+        cur.execute('''CREATE TABLE IF NOT EXISTS placements (
+            id SERIAL PRIMARY KEY, company_name TEXT NOT NULL, role TEXT, ctc TEXT, visit_date TEXT, experience TEXT, submitted_by TEXT, net_id TEXT)''')
+        cur.execute('''CREATE TABLE IF NOT EXISTS lost_found (
+            id SERIAL PRIMARY KEY, item_name TEXT NOT NULL, description TEXT, location TEXT, type TEXT, contact_phone TEXT, net_id TEXT, created_at TEXT)''')
     else:
         cur.execute('''CREATE TABLE IF NOT EXISTS students (
             net_id TEXT PRIMARY KEY, name TEXT, register_no TEXT,
@@ -83,6 +92,14 @@ def init_db():
         cur.execute('''CREATE TABLE IF NOT EXISTS club_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT, club_name TEXT NOT NULL, event_title TEXT NOT NULL, event_date TEXT, registration_link TEXT, image_url TEXT,
             created_by TEXT, net_id TEXT, created_at TEXT)''')
+        cur.execute('''CREATE TABLE IF NOT EXISTS campus_polls (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, question TEXT NOT NULL, options TEXT NOT NULL, is_active INTEGER DEFAULT 1, created_at TEXT)''')
+        cur.execute('''CREATE TABLE IF NOT EXISTS poll_votes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, poll_id INTEGER, net_id TEXT, option_index INTEGER, created_at TEXT)''')
+        cur.execute('''CREATE TABLE IF NOT EXISTS placements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, company_name TEXT NOT NULL, role TEXT, ctc TEXT, visit_date TEXT, experience TEXT, submitted_by TEXT, net_id TEXT)''')
+        cur.execute('''CREATE TABLE IF NOT EXISTS lost_found (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, item_name TEXT NOT NULL, description TEXT, location TEXT, type TEXT, contact_phone TEXT, net_id TEXT, created_at TEXT)''')
     conn.commit()
     cur.close()
     conn.close()
@@ -165,6 +182,7 @@ def serve_root_files(filename):
 # PLAYWRIGHT SCRAPING LOGIC
 # ==========================================
 active_sessions = {}
+completed_sessions = {}
 session_lock = threading.Lock()
 
 def playwright_worker(session_id, reg_no, pwd, in_queue, out_queue):
@@ -352,27 +370,42 @@ def start_session():
     t = threading.Thread(target=playwright_worker, args=(session_id, reg_no, pwd, in_queue, out_queue))
     t.daemon = True
     t.start()
+    
+    return jsonify({'success': True, 'session_id': session_id, 'status': 'processing'})
+
+@app.route('/api/session_status/<session_id>', methods=['GET'])
+def session_status(session_id):
+    with session_lock:
+        if session_id in completed_sessions:
+            return jsonify(completed_sessions.pop(session_id))
+        session_data = active_sessions.get(session_id)
+        
+    if not session_data:
+        return jsonify({'success': False, 'error': 'Session invalid or expired.'}), 404
 
     try:
-        result = out_queue.get(timeout=60) 
+        result = session_data['out_queue'].get_nowait()
         if result.get('requires_captcha'):
             return jsonify({
                 'success': True,
-                'requires_captcha': True,
+                'status': 'requires_captcha',
                 'session_id': session_id,
                 'captcha_base64': result.get('captcha_base64')
             })
         else:
-            final_result = out_queue.get(timeout=60)
-            if final_result.get('success'):
-                # Extract net_id and save to DB
-                raw_reg = reg_no
+            if result.get('success'):
+                raw_reg = session_data['reg_no']
                 net_id = raw_reg.split('@')[0] if '@' in raw_reg else raw_reg
-                save_student_to_db(net_id, 'Student', net_id.upper(), final_result.get('data', []), [])
-            return jsonify(final_result)
-                
+                save_student_to_db(net_id, 'Student', net_id.upper(), result.get('data', []), [])
+            
+            result['status'] = 'completed'
+            with session_lock:
+                completed_sessions[session_id] = result
+                active_sessions.pop(session_id, None)
+            return jsonify(result)
+            
     except queue.Empty:
-        return jsonify({'success': False, 'error': 'Backend connection timed out.'}), 502
+        return jsonify({'success': True, 'status': 'processing', 'session_id': session_id})
 
 @app.route('/api/submit_captcha', methods=['POST'])
 def submit_captcha():
@@ -388,15 +421,7 @@ def submit_captcha():
 
     session_data['in_queue'].put({'action': 'submit', 'captcha_text': captcha_text})
     
-    try:
-        final_result = session_data['out_queue'].get(timeout=60)
-        if final_result.get('success'):
-            raw_reg = session_data['reg_no']
-            net_id = raw_reg.split('@')[0] if '@' in raw_reg else raw_reg
-            save_student_to_db(net_id, 'Student', net_id.upper(), final_result.get('data', []), [])
-        return jsonify(final_result)
-    except queue.Empty:
-         return jsonify({'success': False, 'error': 'Scraping timed out after captcha.'}), 502
+    return jsonify({'success': True, 'status': 'processing', 'session_id': session_id})
 
 # ==========================================
 # DATABASE ROUTES
@@ -734,6 +759,140 @@ def submit_event():
 
     return jsonify({'success': True})
 
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001)) # Changed to 5001 to avoid VS Code clash
     app.run(host='0.0.0.0', port=port, debug=True)
+
+# ==========================================
+# OVERTAKE PHASE ROUTES
+# ==========================================
+
+@app.get('/api/polls/active')
+def get_active_poll():
+    conn = get_db()
+    try:
+        if DATABASE_URL:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute("SELECT * FROM campus_polls WHERE is_active = 1 ORDER BY id DESC LIMIT 1")
+                row = cur.fetchone()
+                if row:
+                    cur.execute("SELECT option_index, COUNT(*) as count FROM poll_votes WHERE poll_id = %s GROUP BY option_index", (row['id'],))
+                    votes = {r['option_index']: r['count'] for r in cur.fetchall()}
+                    row = dict(row)
+                    row['votes'] = votes
+                    return jsonify(row)
+        else:
+            row = conn.execute("SELECT * FROM campus_polls WHERE is_active = 1 ORDER BY id DESC LIMIT 1").fetchone()
+            if row:
+                row = dict(row)
+                votes_rows = conn.execute("SELECT option_index, COUNT(*) as count FROM poll_votes WHERE poll_id = ? GROUP BY option_index", (row['id'],)).fetchall()
+                row['votes'] = {r['option_index']: r['count'] for r in votes_rows}
+                return jsonify(row)
+                
+        # Default seeded poll if empty
+        default_poll = {
+            'id': 1, 'question': 'Is the Mess Food edible today?',
+            'options': json.dumps(["Yes, surprisingly!", "No, skip it.", "Safe to Bunk!"]),
+            'votes': {}, 'is_active': 1, 'created_at': datetime.now().isoformat()
+        }
+        return jsonify(default_poll)
+    finally:
+        conn.close()
+
+@app.post('/api/polls/vote')
+def vote_poll():
+    d = request.json
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        net_id = d.get('net_id', 'Anonymous')
+        if DATABASE_URL:
+            cur.execute("SELECT id FROM poll_votes WHERE poll_id = %s AND net_id = %s", (d['poll_id'], net_id))
+        else:
+            cur.execute("SELECT id FROM poll_votes WHERE poll_id = ? AND net_id = ?", (d['poll_id'], net_id))
+            
+        if cur.fetchone():
+            return jsonify({"success": False, "error": "Already voted"}), 400
+            
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if DATABASE_URL:
+            cur.execute("INSERT INTO poll_votes (poll_id, net_id, option_index, created_at) VALUES (%s, %s, %s, %s)",
+                       (d['poll_id'], net_id, d['option_index'], now))
+        else:
+            cur.execute("INSERT INTO poll_votes (poll_id, net_id, option_index, created_at) VALUES (?, ?, ?, ?)",
+                       (d['poll_id'], net_id, d['option_index'], now))
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.get('/api/placements')
+def get_placements():
+    conn = get_db()
+    try:
+        if DATABASE_URL:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute("SELECT * FROM placements ORDER BY id DESC LIMIT 50")
+                rows = cur.fetchall()
+        else:
+            rows = [dict(r) for r in conn.execute("SELECT * FROM placements ORDER BY id DESC LIMIT 50").fetchall()]
+        return jsonify(list(rows))
+    finally:
+        conn.close()
+
+@app.post('/api/placements/submit')
+def submit_placement():
+    d = request.json
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        if DATABASE_URL:
+            cur.execute("INSERT INTO placements (company_name, role, ctc, visit_date, experience, submitted_by, net_id) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                       (d['company_name'], d.get('role'), d.get('ctc'), d.get('visit_date'), d.get('experience'), d.get('submitted_by'), d.get('net_id')))
+        else:
+            cur.execute("INSERT INTO placements (company_name, role, ctc, visit_date, experience, submitted_by, net_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                       (d['company_name'], d.get('role'), d.get('ctc'), d.get('visit_date'), d.get('experience'), d.get('submitted_by'), d.get('net_id')))
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.get('/api/lostfound')
+def get_lostfound():
+    conn = get_db()
+    try:
+        if DATABASE_URL:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute("SELECT * FROM lost_found ORDER BY id DESC LIMIT 50")
+                rows = cur.fetchall()
+        else:
+            rows = [dict(r) for r in conn.execute("SELECT * FROM lost_found ORDER BY id DESC LIMIT 50").fetchall()]
+        return jsonify(list(rows))
+    finally:
+        conn.close()
+
+@app.post('/api/lostfound/submit')
+def submit_lostfound():
+    d = request.json
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if DATABASE_URL:
+            cur.execute("INSERT INTO lost_found (item_name, description, location, type, contact_phone, net_id, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                       (d['item_name'], d.get('description'), d.get('location'), d['type'], d.get('contact_phone'), d.get('net_id'), now))
+        else:
+            cur.execute("INSERT INTO lost_found (item_name, description, location, type, contact_phone, net_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                       (d['item_name'], d.get('description'), d.get('location'), d['type'], d.get('contact_phone'), d.get('net_id'), now))
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        conn.close()

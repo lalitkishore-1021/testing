@@ -1678,6 +1678,14 @@
                 </div>
             </div>
 
+            <!-- DAILY VIBE CHECK POLL -->
+            <div id="daily-poll-container" style="display: none; max-width: 800px; margin: 30px auto; text-align: center; background: rgba(255,170,0,0.05); padding: 25px; border-radius: 20px; border: 1px solid rgba(255,170,0,0.3);">
+                <h3 style="color: var(--primary); font-family: 'Montserrat', sans-serif; text-transform: uppercase; margin-bottom: 5px;">📊 Daily Vibe Check</h3>
+                <p id="poll-question" style="color: var(--text-main); font-size: 1.1rem; margin-bottom: 20px; font-weight: bold;"></p>
+                <div id="poll-options" style="display: flex; flex-direction: column; gap: 10px;"></div>
+                <div id="poll-results" style="display: none; flex-direction: column; gap: 15px;"></div>
+            </div>
+
             <h3 class="section-title">Quick Actions</h3>
             <div class="quick-actions-grid">
                 <div class="action-card" onclick="openProject('oopsBanner')">
@@ -1758,6 +1766,20 @@
                     <div>
                         <h4 class="action-title">Club Radar</h4>
                         <p class="action-sub">Upcoming SRM Events</p>
+                    </div>
+                </div>
+                <div class="action-card" onclick="switchView('placements-view'); loadPlacements();">
+                    <div class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg></div>
+                    <div>
+                        <h4 class="action-title">Placement Radar</h4>
+                        <p class="action-sub">Career drives & tips</p>
+                    </div>
+                </div>
+                <div class="action-card" onclick="switchView('lostfound-view'); loadLostFound();">
+                    <div class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></div>
+                    <div>
+                        <h4 class="action-title">Lost & Found</h4>
+                        <p class="action-sub">Find your belongings</p>
                     </div>
                 </div>
                 <div class="action-card" onclick="switchView('cgpa-view')">
@@ -1923,6 +1945,30 @@
             </div>
 
             <div id="events-list" style="max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px;"></div>
+        </div>
+
+        <div id="placements-view" class="app-view">
+            <div class="view-header">
+                <button class="back-btn" onclick="switchNav('home-view', document.querySelector('.nav-item'))">&#8592; Back to Home</button>
+                <h2 class="gallery-title">Placement Radar 💼</h2>
+                <p class="subtitle" style="margin-bottom: 20px;">Latest recruitment news and experiences</p>
+            </div>
+            <div style="text-align: center; margin-bottom: 30px;">
+                <button class="action-btn" onclick="document.getElementById('placementSubmitModal').style.display='flex';" style="background: linear-gradient(135deg, #2a5298, #1e3c72); color: #fff; font-weight: 900; font-size: 1rem; padding: 14px 30px; border-radius: 30px; text-transform: uppercase;">+ Post News</button>
+            </div>
+            <div id="placements-list" style="max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px;"></div>
+        </div>
+
+        <div id="lostfound-view" class="app-view">
+            <div class="view-header">
+                <button class="back-btn" onclick="switchNav('home-view', document.querySelector('.nav-item'))">&#8592; Back to Home</button>
+                <h2 class="gallery-title">Lost & Found 🔍</h2>
+                <p class="subtitle" style="margin-bottom: 20px;">Helping SRMites recover belongings</p>
+            </div>
+            <div style="text-align: center; margin-bottom: 30px;">
+                <button class="action-btn" onclick="document.getElementById('lostFoundSubmitModal').style.display='flex';" style="background: linear-gradient(135deg, #ffaa00, #ff8800); color: #000; font-weight: 900; font-size: 1rem; padding: 14px 30px; border-radius: 30px;">+ Report Item</button>
+            </div>
+            <div id="lostfound-list" style="max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px;"></div>
         </div>
 
         <div id="cgpa-view" class="app-view">
@@ -2324,6 +2370,43 @@
         </div>
     </div>
 
+    <!-- PLACEMENT SUBMIT MODAL -->
+    <div id="placementSubmitModal" class="lightbox" onclick="if(event.target===this) document.getElementById('placementSubmitModal').style.display='none'">
+        <div class="sync-modal-content">
+            <span class="close-btn" style="top:10px;right:15px;font-size:30px;" onclick="document.getElementById('placementSubmitModal').style.display='none'">&times;</span>
+            <h3 style="color:var(--primary); font-family:'Montserrat',sans-serif; margin-bottom: 20px;">Share Career Info</h3>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <input id="placement-company" class="modal-input" placeholder="Company Name *" style="background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #fff; padding: 13px; border-radius: 12px;">
+                <input id="placement-role" class="modal-input" placeholder="Job Role / Position" style="background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #fff; padding: 13px; border-radius: 12px;">
+                <input id="placement-ctc" class="modal-input" placeholder="CTC Package (e.g. 12 LPA)" style="background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #fff; padding: 13px; border-radius: 12px;">
+                <input type="date" id="placement-date" class="modal-input" style="background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #fff; padding: 13px; border-radius: 12px; font-family: inherit;">
+                <textarea id="placement-exp" class="modal-input" placeholder="Interview Tips or Experience Notes" rows="4" style="background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #fff; padding: 13px; border-radius: 12px; resize: none; font-family: inherit;"></textarea>
+                <button class="action-btn" onclick="submitPlacement()" style="margin-top: 5px; background: #2a5298; color: white;">POST UPDATES</button>
+                <p id="placement-status" style="font-size: 0.85rem; font-weight: bold; text-align: center; min-height: 20px;"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOST & FOUND SUBMIT MODAL -->
+    <div id="lostFoundSubmitModal" class="lightbox" onclick="if(event.target===this) document.getElementById('lostFoundSubmitModal').style.display='none'">
+        <div class="sync-modal-content">
+            <span class="close-btn" style="top:10px;right:15px;font-size:30px;" onclick="document.getElementById('lostFoundSubmitModal').style.display='none'">&times;</span>
+            <h3 style="color:var(--primary); font-family:'Montserrat',sans-serif; margin-bottom: 20px;">Lost & Found Report</h3>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <select id="lf-type" class="modal-input" style="background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #fff; padding: 13px; border-radius: 12px; appearance: none;">
+                    <option value="Lost">I Lost Something</option>
+                    <option value="Found">I Found Something</option>
+                </select>
+                <input id="lf-item" class="modal-input" placeholder="Item Name (e.g. Blue Umbrella) *" style="background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #fff; padding: 13px; border-radius: 12px;">
+                <input id="lf-loc" class="modal-input" placeholder="Location (e.g. Near UB Canteen) *" style="background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #fff; padding: 13px; border-radius: 12px;">
+                <textarea id="lf-desc" class="modal-input" placeholder="Additional details..." rows="3" style="background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #fff; padding: 13px; border-radius: 12px; resize: none; font-family: inherit;"></textarea>
+                <input id="lf-phone" class="modal-input" placeholder="Contact WhatsApp *" style="background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #fff; padding: 13px; border-radius: 12px;">
+                <button class="action-btn" onclick="submitLostFound()" style="margin-top: 5px;">POST REPORT</button>
+                <p id="lf-status" style="font-size: 0.85rem; font-weight: bold; text-align: center; min-height: 20px;"></p>
+            </div>
+        </div>
+    </div>
+
     <div id="syncModal" class="lightbox" onclick="if(event.target === this) closeSyncModal()">
         <div class="sync-modal-content">
             <span class="close-btn" style="top: 10px; right: 15px; font-size: 30px;"
@@ -2508,6 +2591,7 @@
         // ================= INITIALIZATION =================
         updateHomeState();
         loadSavedData();
+        loadPoll();
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
@@ -2582,7 +2666,9 @@
             renderTimetable(savedTT);
         }
 
-        // ================= LIVE SYNC API CALL =================
+        // ================= LIVE SYNC API CALL (POLLING) =================
+        let activePollingInterval = null;
+
         function toggleBatch(element, batchNum) {
             document.querySelectorAll('.batch-btn').forEach(btn => btn.classList.remove('active'));
             element.classList.add('active');
@@ -2602,52 +2688,89 @@
                 return;
             }
 
-            statusText.innerText = "🔄 Syncing with Academia... This takes up to 90 seconds.";
+            statusText.innerText = "🔄 Initializing Auto-Sync...";
             statusText.style.color = "var(--primary)";
+            
+            if (activePollingInterval) clearInterval(activePollingInterval);
 
             try {
+                // 1. Kick off the session
                 const res = await fetch(`${BACKEND_URL}/api/start_session`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ regNo: regNo, pwd: pwd, batch: currentBatch })
                 });
 
-                const result = await res.json();
-
-                if (!result.success) {
-                    statusText.innerText = "❌ " + result.error;
+                const startData = await res.json();
+                if (!startData.session_id) {
+                    statusText.innerText = "❌ Initialization failed.";
                     statusText.style.color = "var(--danger)";
                     return;
                 }
+                
+                const sessionId = startData.session_id;
+                
+                // 2. Poll every 3 seconds
+                activePollingInterval = setInterval(async () => {
+                    try {
+                        const statRes = await fetch(`${BACKEND_URL}/api/session_status/${sessionId}`);
+                        const result = await statRes.json();
+                        
+                        if (result.status === 'processing' || result.status === 'pending') {
+                            statusText.innerText += ".";
+                            if (statusText.innerText.length > 50) statusText.innerText = "🔄 Pulling from Academia...";
+                            return; // Wait for next tick
+                        }
+                        
+                        // Terminal state reached
+                        clearInterval(activePollingInterval);
+                        
+                        if (result.status === 'requires_captcha') {
+                            statusText.innerHTML = `⚠️ <b style="color:var(--danger);">Captcha required!</b> Advanced scraping not supported yet.`;
+                            return;
+                        }
+                        
+                        if (!result.success || result.status === 'error') {
+                            statusText.innerText = "❌ " + (result.error || "Scraping Failed");
+                            statusText.style.color = "var(--danger)";
+                            return;
+                        }
 
-                statusText.innerHTML = `✅ Success! Updated in <span style="color:var(--primary)">${result.sync_time}s</span>.`;
-                statusText.style.color = "var(--success)";
+                        // Success!
+                        statusText.innerHTML = `✅ Success! Updated in <span style="color:var(--primary)">${result.sync_time || '<30'}s</span>.`;
+                        statusText.style.color = "var(--success)";
 
-                isLoggedIn = true;
-                localStorage.setItem("isLoggedIn", "true");
-                updateHomeState();
+                        isLoggedIn = true;
+                        localStorage.setItem("isLoggedIn", "true");
+                        updateHomeState();
 
-                const attList = Array.isArray(result.data) ? result.data : [];
-                const marksList = Array.isArray(result.marks) ? result.marks : [];
-                const ttDict = result.timetable || {};
-                const profile = result.profile || {};
+                        const attList = Array.isArray(result.data) ? result.data : [];
+                        const marksList = Array.isArray(result.marks) ? result.marks : [];
+                        const ttDict = result.timetable || {};
+                        const profile = result.profile || {};
 
-                localStorage.setItem('squadProfile', JSON.stringify(profile));
-                localStorage.setItem('squadAttendance', JSON.stringify(attList));
-                localStorage.setItem('squadMarks', JSON.stringify(marksList));
-                localStorage.setItem('squadTimetable', JSON.stringify(ttDict));
+                        localStorage.setItem('squadProfile', JSON.stringify(profile));
+                        localStorage.setItem('squadAttendance', JSON.stringify(attList));
+                        localStorage.setItem('squadMarks', JSON.stringify(marksList));
+                        localStorage.setItem('squadTimetable', JSON.stringify(ttDict));
 
-                try { renderProfile(profile); } catch (e) { console.error("Profile Render Error:", e); }
-                try { renderAttendance(attList); } catch (e) { console.error("Attendance Render Error:", e); }
-                try { renderMarks(marksList); } catch (e) { console.error("Marks Render Error:", e); }
-                try { renderTimetable(ttDict); } catch (e) { console.error("Timetable Render Error:", e); }
+                        try { renderProfile(profile); } catch (e) {}
+                        try { renderAttendance(attList); } catch (e) {}
+                        try { renderMarks(marksList); } catch (e) {}
+                        try { renderTimetable(ttDict); } catch (e) {}
 
-                setTimeout(() => closeSyncModal(), 1500);
+                        setTimeout(() => closeSyncModal(), 1500);
+
+                    } catch (pollErr) {
+                         clearInterval(activePollingInterval);
+                         statusText.innerText = "❌ Disconnected from Server while syncing.";
+                         statusText.style.color = "var(--danger)";
+                    }
+                }, 3000);
 
             } catch (e) {
-                statusText.innerText = "❌ Could not connect to backend server.";
+                statusText.innerText = "❌ Could not reach backend server.";
                 statusText.style.color = "var(--danger)";
-            } finally {
                 document.getElementById('srm-pwd').value = '';
             }
         }
@@ -4069,9 +4192,208 @@
             }
         }
 
+        // ================= POLL LOGIC =================
+        let currentPoll = null;
+        async function loadPoll() {
+            const container = document.getElementById('daily-poll-container');
+            const optionsBox = document.getElementById('poll-options');
+            const resultsBox = document.getElementById('poll-results');
+            
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/polls/active`);
+                currentPoll = await res.json();
+                if (!currentPoll) return;
+                
+                document.getElementById('poll-question').innerText = currentPoll.question;
+                const options = JSON.parse(currentPoll.options);
+                const hasVoted = localStorage.getItem(`voted_poll_${currentPoll.id}`);
+                
+                container.style.display = 'block';
+                
+                if (hasVoted) {
+                    showPollResults(options, currentPoll.votes);
+                } else {
+                    optionsBox.innerHTML = options.map((opt, idx) => `
+                        <button class="action-btn" onclick="votePoll(${idx})" style="background: rgba(255,170,0,0.1); border: 1px solid rgba(255,170,0,0.3); color: var(--text-main); text-transform: none; text-align: left; padding: 12px 20px; font-size: 0.95rem;">${opt}</button>
+                    `).join('');
+                    optionsBox.style.display = 'flex';
+                    resultsBox.style.display = 'none';
+                }
+            } catch (e) { console.error("Poll load failed", e); }
+        }
+
+        async function votePoll(index) {
+            if (!currentPoll) return;
+            const profile = JSON.parse(localStorage.getItem('squadProfile') || '{}');
+            const net_id = profile.regNo ? profile.regNo.split('@')[0] : 'Anonymous';
+            
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/polls/vote`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ poll_id: currentPoll.id, option_index: index, net_id: net_id })
+                });
+                
+                if (res.ok) {
+                    localStorage.setItem(`voted_poll_${currentPoll.id}`, 'true');
+                    loadPoll();
+                } else {
+                    const err = await res.json();
+                    if (err.error === 'Already voted') {
+                         localStorage.setItem(`voted_poll_${currentPoll.id}`, 'true');
+                         loadPoll();
+                    }
+                }
+            } catch (e) { alert("Vote failed. Try again."); }
+        }
+
+        function showPollResults(options, votes = {}) {
+            const resultsBox = document.getElementById('poll-results');
+            const total = Object.values(votes).reduce((a, b) => a + b, 0) || 1;
+            
+            resultsBox.innerHTML = options.map((opt, idx) => {
+                const count = votes[idx] || 0;
+                const perc = Math.round((count / total) * 100);
+                return `
+                    <div style="text-align: left;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 5px; color: var(--text-sub);">
+                            <span>${opt}</span>
+                            <span>${perc}%</span>
+                        </div>
+                        <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden;">
+                            <div style="width: ${perc}%; height: 100%; background: var(--primary); box-shadow: 0 0 10px var(--primary-glow);"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('') + `<p style="font-size: 0.75rem; color: #888; margin-top: 10px; text-align: center;">Total Votes: ${total}</p>`;
+            
+            document.getElementById('poll-options').style.display = 'none';
+            resultsBox.style.display = 'flex';
+        }
+
+        // ================= PLACEMENTS LOGIC =================
+        async function loadPlacements() {
+            const list = document.getElementById('placements-list');
+            list.innerHTML = '<div class="css-loader" style="margin: 40px auto;"></div>';
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/placements`);
+                const items = await res.json();
+                
+                if (items.length === 0) {
+                    list.innerHTML = `<div class="image-card" style="text-align:center; padding: 40px; color: var(--text-sub);">No placement news yet. Be the first to share!</div>`;
+                    return;
+                }
+                
+                list.innerHTML = items.map(p => `
+                    <div class="image-card fade-in-up" style="transform: none; text-align: left; border-left: 4px solid var(--primary); padding: 25px;">
+                        <div style="display:flex; justify-content: space-between; align-items: flex-start;">
+                            <div>
+                                <h3 style="color: var(--text-main); margin: 0 0 5px 0; font-size: 1.35rem;">${p.company_name}</h3>
+                                <div style="font-size: 0.9rem; color: var(--primary); font-weight: bold; text-transform: uppercase;">${p.role || 'Recruitment Drive'}</div>
+                            </div>
+                            <div style="background: rgba(255,170,0,0.1); color: var(--primary); padding: 5px 12px; border-radius: 8px; font-weight: bold;">${p.ctc || 'CTC TBD'}</div>
+                        </div>
+                        <div style="margin: 15px 0; color: var(--text-sub); line-height: 1.6; font-size: 1rem; background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px;">
+                            <b>Interview Insights:</b><br>${p.experience || 'No experience notes shared yet.'}
+                        </div>
+                    </div>
+                `).join('');
+            } catch (e) {}
+        }
+
+        async function submitPlacement() {
+            const company = document.getElementById('placement-company').value.trim();
+            const status = document.getElementById('placement-status');
+            if (!company) { status.style.color='var(--danger)'; status.innerText='Company Name is required!'; return; }
+            
+            const profile = JSON.parse(localStorage.getItem('squadProfile') || '{}');
+            const data = {
+                company_name: company,
+                role: document.getElementById('placement-role').value,
+                ctc: document.getElementById('placement-ctc').value,
+                visit_date: document.getElementById('placement-date').value,
+                experience: document.getElementById('placement-exp').value,
+                submitted_by: profile.name || 'Senior',
+                net_id: profile.regNo ? profile.regNo.split('@')[0] : ''
+            };
+            
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/placements/submit`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                if (res.ok) {
+                    status.style.color='#00cc66'; status.innerText='Experience shared successfully!';
+                    setTimeout(() => { document.getElementById('placementSubmitModal').style.display='none'; loadPlacements(); }, 1500);
+                }
+            } catch (e) { status.style.color='var(--danger)'; status.innerText='Submission failed.'; }
+        }
+
+        // ================= LOST & FOUND LOGIC =================
+        async function loadLostFound() {
+            const list = document.getElementById('lostfound-list');
+            list.innerHTML = '<div class="css-loader" style="margin: 40px auto;"></div>';
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/lostfound`);
+                const items = await res.json();
+                
+                if (items.length === 0) {
+                    list.innerHTML = `<div class="image-card" style="text-align:center; padding: 40px; color: var(--text-sub);">No lost/found reports. Everything seems in place!</div>`;
+                    return;
+                }
+                
+                list.innerHTML = items.map(p => {
+                    const phoneWa = p.contact_phone ? p.contact_phone.replace(/\D/g, '') : '';
+                    const waLink = phoneWa ? `https://wa.me/${phoneWa}` : '';
+                    const isLost = p.type === 'Lost';
+                    
+                    return `
+                        <div class="image-card fade-in-up" style="transform: none; text-align: left; padding: 25px; border-left: 4px solid ${isLost ? 'var(--danger)' : '#00cc66'};">
+                            <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                <span style="background: ${isLost ? 'rgba(255,68,68,0.1)' : 'rgba(0,204,102,0.1)'}; color: ${isLost ? 'var(--danger)' : '#00cc66'}; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 800; text-transform: uppercase;">${p.type} ITEM</span>
+                            </div>
+                            <h3 style="color: var(--text-main); margin: 0 0 10px 0;">${p.item_name}</h3>
+                            <div style="font-size: 0.9rem; color: var(--primary); margin-bottom: 10px;">📍 <b>Location:</b> ${p.location}</div>
+                            <p style="color: var(--text-sub); font-size: 0.95rem; margin-bottom: 20px;">${p.description || ''}</p>
+                            ${waLink ? `<a href="${waLink}" target="_blank" style="background: #25D366; color: #fff; padding: 10px 20px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 0.85rem;">Contact ↗</a>` : ''}
+                        </div>
+                    `;
+                }).join('');
+            } catch (e) {}
+        }
+
+        async function submitLostFound() {
+            const item = document.getElementById('lf-item').value.trim();
+            const location = document.getElementById('lf-loc').value.trim();
+            const phone = document.getElementById('lf-phone').value.trim();
+            const status = document.getElementById('lf-status');
+            
+            if (!item || !location || !phone) { status.style.color='var(--danger)'; status.innerText='Required fields missing!'; return; }
+            
+            const profile = JSON.parse(localStorage.getItem('squadProfile') || '{}');
+            const data = {
+                type: document.getElementById('lf-type').value,
+                item_name: item,
+                location: location,
+                description: document.getElementById('lf-desc').value,
+                contact_phone: phone,
+                net_id: profile.regNo ? profile.regNo.split('@')[0] : 'Student'
+            };
+            
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/lostfound/submit`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                if (res.ok) {
+                    status.style.color='#00cc66'; status.innerText='Report posted successfully!';
+                    setTimeout(() => { document.getElementById('lostFoundSubmitModal').style.display='none'; loadLostFound(); }, 1500);
+                }
+            } catch (e) { status.style.color='var(--danger)'; status.innerText='Post failed.'; }
+        }
 
     </script>
-
 </body>
-
 </html>
