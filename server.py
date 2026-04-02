@@ -279,36 +279,19 @@ def playwright_worker(session_id, reg_no, pwd, batch, in_queue, out_queue):
             out_queue.put({'success': False, 'error': f'Auth Failed: {str(e)}'})
             return
 
-        print(f"[{reg_no}] 3. Auth OK. Starting Parallel Sync...")
-
-        # PARALLEL FETCHING
-        # Page 1: Attendance & Marks
-        # Page 2: Student Slots
-        # Page 3: Master Timetable
-        
-        page_att = page # Reuse main page
-        page_slots = context.new_page()
-        page_master = context.new_page()
-
-        # Define targets
-        targets = [
-            {"page": page_att, "url": "https://academia.srmist.edu.in/#Page:My_Attendance"},
-            {"page": page_slots, "url": "https://academia.srmist.edu.in/#Page:My_Time_Table_2023_24"},
-            {"page": page_master, "url": f"https://academia.srmist.edu.in/#Page:Unified_Time_Table_2025_Batch_{batch}"}
-        ]
-
-        # Trigger all navigations in parallel
-        for t in targets:
-            t["page"].goto(t["url"], wait_until="domcontentloaded")
+        # Navigate SEQUENTIALLY - Academia/Zoho needs time per page
+        print(f"[{reg_no}] 3a. Loading Attendance page...")
+        page_att.goto("https://academia.srmist.edu.in/#Page:My_Attendance", wait_until="domcontentloaded")
 
         # Function to wait and extract tables from a specific page
         def extract_from_page(target_page, label):
             print(f"[{reg_no}] Fetching {label}...")
             try:
-                # Wait for at least one iframe to appear (Academia uses them for everything)
-                target_page.wait_for_selector("iframe", timeout=15000)
-                # Small buffer for ZOHO JS to render tables inside iframes
-                target_page.wait_for_timeout(2000)
+                # Wait for iframe to appear with generous timeout
+                target_page.wait_for_selector("iframe", timeout=25000)
+                # Wait for Zoho JS to render tables INSIDE iframes - crucial!
+                target_page.wait_for_timeout(8000)
+                print(f"[{reg_no}] Extracting tables from {label}...")
                 
                 all_tables = []
                 for frame in target_page.frames:
@@ -328,15 +311,22 @@ def playwright_worker(session_id, reg_no, pwd, batch, in_queue, out_queue):
                         }""")
                         if tables: all_tables.extend(tables)
                     except: pass
+                print(f"[{reg_no}] Found {len(all_tables)} tables in {label}")
                 return all_tables
-            except:
-                print(f"[{reg_no}] Timeout or error fetching {label}")
+            except Exception as ex:
+                print(f"[{reg_no}] Error fetching {label}: {ex}")
                 return []
 
-        # Wait for all (manually, as sync_playwright doesn't have an easy gather)
-        # But since they are all in the same context, they load concurrently anyway.
         raw_tables = extract_from_page(page_att, "Attendance")
+
+        print(f"[{reg_no}] 3b. Loading Slots page...")
+        page_slots = context.new_page()
+        page_slots.goto("https://academia.srmist.edu.in/#Page:My_Time_Table_2023_24", wait_until="domcontentloaded")
         slot_tables = extract_from_page(page_slots, "Slots")
+
+        print(f"[{reg_no}] 3c. Loading Master Timetable page...")
+        page_master = context.new_page()
+        page_master.goto(f"https://academia.srmist.edu.in/#Page:Unified_Time_Table_2025_Batch_{batch}", wait_until="domcontentloaded")
         master_tables = extract_from_page(page_master, "Master TT")
 
         parsed_att = []
@@ -481,10 +471,14 @@ def playwright_worker(session_id, reg_no, pwd, batch, in_queue, out_queue):
         print(f"Scraper Exception: {str(e)}")
         out_queue.put({'success': False, 'error': f"Scraper Exception: {str(e)}"})
     finally:
-        if browser: browser.close()
-        if p: p.stop()
-        with session_lock:
-             active_sessions.pop(session_id, None)
+        if browser:
+            try: browser.close()
+            except: pass
+        if p:
+            try: p.stop()
+            except: pass
+        # DO NOT pop active_sessions here - session_status endpoint handles cleanup
+        # Popping here causes a race condition: poller gets 404 before reading the result
 
 @app.route('/api/start_session', methods=['POST'])
 def start_session():
