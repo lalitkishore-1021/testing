@@ -280,6 +280,7 @@ def playwright_worker(session_id, reg_no, pwd, batch, in_queue, out_queue):
             return
 
         # Navigate SEQUENTIALLY - Academia/Zoho needs time per page
+        page_att = page  # Reuse the authenticated main page
         print(f"[{reg_no}] 3a. Loading Attendance page...")
         page_att.goto("https://academia.srmist.edu.in/#Page:My_Attendance", wait_until="domcontentloaded")
 
