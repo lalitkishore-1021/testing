@@ -145,173 +145,148 @@ def save_student_to_db(net_id, name, register_no, att_data, marks_data):
 
 def scrape_academia_worker(reg_no, pwd, batch, out_queue):
     import time
+    import requests
+    import json
+    import re
+    from urllib.parse import parse_qs
+    from html.parser import HTMLParser
+
     start_time = time.time()
     def log_time(msg):
         print(f"[{reg_no}] [{time.time() - start_time:.2f}s] {msg}", flush=True)
-        
-    p = None
-    browser = None
+
+    class TableParser(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.tables = []
+            self.current_table = []
+            self.current_row = []
+            self.current_cell = ''
+            self.in_td = False
+            self.in_tr = False
+            self.in_table = False
+            self.colspan = 1
+
+        def handle_starttag(self, tag, attrs):
+            if tag == 'table':
+                self.in_table = True
+                self.current_table = []
+            elif tag == 'tr' and self.in_table:
+                self.in_tr = True
+                self.current_row = []
+            elif tag in ['td', 'th'] and self.in_tr:
+                self.in_td = True
+                self.current_cell = ''
+                self.colspan = 1
+                for attr in attrs:
+                    if attr[0].lower() == 'colspan':
+                        try:
+                            self.colspan = int(attr[1])
+                        except:
+                            pass
+
+        def handle_endtag(self, tag):
+            if tag == 'table':
+                self.in_table = False
+                if self.current_table:
+                    self.tables.append(self.current_table)
+            elif tag == 'tr' and self.in_table:
+                self.in_tr = False
+                if self.current_row:
+                    self.current_table.append(self.current_row)
+            elif tag in ['td', 'th'] and self.in_tr:
+                self.in_td = False
+                text = self.current_cell.strip()
+                text = re.sub(r'\s+', ' ', text).strip()
+                for _ in range(self.colspan):
+                    self.current_row.append(text)
+
+        def handle_data(self, data):
+            if self.in_td:
+                self.current_cell += data + ' '
+
+    def get_tables_from_html(html_data):
+        parser = TableParser()
+        parser.feed(html_data)
+        return [t for t in parser.tables if t and len(t) > 0]
+
+    def get_col_index(headers, *keywords):
+        for i, h in enumerate(headers):
+            h_lower = str(h).lower()
+            if any(kw in h_lower for kw in keywords):
+                return i
+        return -1
+
     try:
-        p = sync_playwright().start()
-        log_time("Launching Academia Sniper...")
-        
-        browser = p.chromium.launch(
-            headless=True,
-            args=[
-                '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
-                '--disable-extensions', '--disable-background-networking',
-                '--no-first-run', '--disable-sync',
-                '--blink-settings=imagesEnabled=false'
-            ]
-        )
-        
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            viewport={'width': 1280, 'height': 720}
-        )
-        page = context.new_page()
-        page.set_default_timeout(30000)
-
-        # AGGRESSIVELY block everything unnecessary to make it API-fast.
-        # Since we use textContent now, CSS/Fonts are irrelevant.
-        def _block_heavy_assets(route):
-            if route.request.resource_type in ("image", "media", "stylesheet", "font", "other"):
-                route.abort()
-            else:
-                route.continue_()
-        page.route("**/*", _block_heavy_assets)
-
+        log_time("Launching API-mode Sniper...")
         if "@" not in reg_no: reg_no += "@srmist.edu.in"
-
-        log_time("1. Loading Academia...")
+        
+        headers_auth = {
+            'Origin': 'https://academia.srmist.edu.in',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        }
+        
+        # 1. Login to get Auth Token
+        login_url = "https://academia.srmist.edu.in/accounts/signin.ac"
+        payload = {
+            'username': reg_no,
+            'password': pwd,
+            'client_portal': 'true',
+            'portal': '10002227248',
+            'servicename': 'ZohoCreator',
+            'serviceurl': 'https://academia.srmist.edu.in/',
+            'is_ajax': 'true',
+            'grant_type': 'password',
+            'service_language': 'en'
+        }
+        
+        log_time("1. Authenticating via API...")
+        session = requests.Session()
+        r = session.post(login_url, data=payload, headers=headers_auth, timeout=15)
+        
         try:
-            page.goto("https://academia.srmist.edu.in/", wait_until="commit", timeout=60000)
-        except Exception as e:
-            out_queue.put({'success': False, 'error': f'Portal failed to load: {str(e)}'})
+            json_data = r.json()
+        except:
+            raise Exception("Invalid response from Zoho servers.")
+            
+        if "error" in json_data:
+            error_m = json_data['error'].get('msg', 'Login Failed')
+            out_queue.put({'success': False, 'error': f"Auth Error: {error_m}"})
             return
-
-        def find_in_frames(selector, filter_text=None, filter_not_text=None):
-            loc = page.locator(selector)
-            if filter_text: loc = loc.filter(has_text=re.compile(filter_text, re.IGNORECASE))
-            if filter_not_text: loc = loc.filter(has_not_text=re.compile(filter_not_text, re.IGNORECASE))
-            if loc.count() > 0: return loc.first
-            for frame in page.frames:
-                try:
-                    loc = frame.locator(selector)
-                    if filter_text: loc = loc.filter(has_text=re.compile(filter_text, re.IGNORECASE))
-                    if filter_not_text: loc = loc.filter(has_not_text=re.compile(filter_not_text, re.IGNORECASE))
-                    if loc.count() > 0: return loc.first
-                except: continue
-            return None
             
-        # Login Logic - Poll natively fast (100ms)
-        try:
-            email_input = None
-            for _ in range(150): # 15s max
-                email_input = find_in_frames('input[type="email"], input[type="text"], input[name="LOGIN_ID"]', filter_not_text="hidden")
-                if email_input: break
-                page.wait_for_timeout(100)
-                
-            if not email_input: raise Exception("Email box not found")
-            email_input.fill(reg_no, force=True)
-            
-            next_btn = find_in_frames('button, input[type="submit"]', filter_text="next|continue")
-            if next_btn: next_btn.click(force=True, timeout=5000)
-            else: page.keyboard.press("Enter")
+        params = parse_qs(json_data['data']['token_params'])
+        params = {k: v[0] for k, v in params.items()}
+        params['state'] = 'https://academia.srmist.edu.in/'
+        
+        r2 = session.get(json_data['data']['oauthorize_uri'], params=params, headers=headers_auth, timeout=15)
+        log_time("  ✓ API Session Established")
+        
+        req_headers = {
+            'Origin': 'https://academia.srmist.edu.in',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        
+        def fetch_view(view_name):
+            url = "https://academia.srmist.edu.in/liveViewHeader.do"
+            data = {
+                "sharedBy": "srm_university",
+                "appLinkName": "academia-academic-services",
+                "viewLinkName": view_name,
+                "urlParams": "{}",
+                "isPageLoad": "true"
+            }
+            res = session.post(url, data=data, headers=req_headers, timeout=15)
+            # The HTML payload is embedded in jQuery response, but HTMLParser can process the raw response payload securely
+            return get_tables_from_html(res.text)
 
-            pwd_input = None
-            for _ in range(150): 
-                pwd_input = find_in_frames('input[type="password"], input[name="PASSWORD"]')
-                if pwd_input: break
-                page.wait_for_timeout(100)
-                
-            if not pwd_input: raise Exception("Password box not found")
-            pwd_input.fill(pwd, force=True)
-            
-            submit_btn = find_in_frames('button, input[type="submit"]', filter_text="sign in|login|submit|verify")
-            if submit_btn: submit_btn.click(force=True, timeout=5000)
-            else: page.keyboard.press("Enter")
-
-            # Smart-wait for dashboard (100ms intervals)
-            _logged_in = False
-            for _i in range(100): # 10s max
-                page.wait_for_timeout(100)
-                if len(page.frames) > 1:
-                    # check if it actually submitted and moved on
-                    _logged_in = True
-                    log_time(f"  ✓ Login authenticated")
-                    break
-                    
-            if not _logged_in:
-                page.wait_for_timeout(1000) 
-
-            terminate_btn = page.locator('button, a').filter(has_text=re.compile(r"terminate", re.IGNORECASE)).first
-            if terminate_btn.count() > 0:
-                terminate_btn.click(force=True)
-                for _i in range(20):
-                    page.wait_for_timeout(100)
-                    if terminate_btn.count() == 0: break
-        except Exception as e:
-            out_queue.put({'success': False, 'error': f'Auth Failed: {str(e)}'})
-            return
-
-        def get_all_tables():
-            # Use textContent instead of innerText to bypass CSS layout engine completely!
-            all_tables = []
-            for frame in page.frames:
-                try:
-                    tables = frame.evaluate("""() => {
-                        return Array.from(document.querySelectorAll('table')).map(t => 
-                            Array.from(t.querySelectorAll('tr')).map(tr => {
-                                let rowArr = [];
-                                Array.from(tr.querySelectorAll('td, th')).forEach(td => {
-                                    let span = td.colSpan || 1;
-                                    let text = td.textContent.trim().replace(/\\s+/g, ' ');
-                                    for(let i=0; i<span; i++) rowArr.push(text);
-                                });
-                                return rowArr;
-                            }).filter(row => row.length > 0)
-                        ).filter(table => table.length > 0);
-                    }""")
-                    if tables: all_tables.extend(tables)
-                except: pass
-            return all_tables
-
-        def get_col_index(headers, *keywords):
-            for i, h in enumerate(headers):
-                h_lower = str(h).lower()
-                if any(kw in h_lower for kw in keywords):
-                    return i
-            return -1
-
-        # --- ATTENDANCE & MARKS ---
-        log_time("5. Scoping Attendance...")
-        # Instant SPA Routing bypasses top-level network reloads
-        page.evaluate("window.location.hash = 'Page:My_Attendance';")
-
-        raw_tables = []
+        log_time("5. Fetching Attendance via API...")
+        att_tables = fetch_view("My_Attendance")
+        
         profile_data = {"name": "STUDENT", "regNo": reg_no.split('@')[0].upper(), "course": "B.Tech", "semester": "Current"}
         parsed_att = []
         parsed_marks = []
         
-        # 100ms ultra-fast Parse-Polling
-        for attempt in range(120): # max 12s
-            raw_tables = get_all_tables()
-            found_attendance = False
-            for table in raw_tables:
-                if not table: continue
-                header_str = " ".join([str(h).lower() for h in table[0]])
-                if "hours conducted" in header_str and "absent" in header_str:
-                    found_attendance = True
-                    break
-            if found_attendance:
-                log_time("  ✓ Attendance tables rendered")
-                break
-            page.wait_for_timeout(100)
-
-        # Parse Profile & Attendance
-        for table in raw_tables:
-            if not table: continue
+        for table in att_tables:
             for row in table:
                 if len(row) >= 2:
                     for i in range(len(row) - 1):
@@ -358,97 +333,69 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
                                 })
                 except: pass
 
-        # --- TIMETABLE STEP 1 (STUDENT SLOTS) ---
-        log_time("6. Scoping Registered Slots...")
+        log_time("6. Fetching Registered Slots via API...")
         student_slots = {}
-        # Instant SPA Routing
-        page.evaluate("window.location.hash = 'Page:My_Time_Table_2023_24';")
-
-        for attempt in range(100): # max 10s
-            slot_tables = get_all_tables()
-            found_slots = False
-            for table in slot_tables:
-                if not table: continue
-                headers = [str(h).lower() for h in table[0]]
-                header_str = " ".join(headers)
+        slot_tables = fetch_view("My_Time_Table_2023_24")
+        for table in slot_tables:
+            headers = [str(h).lower() for h in table[0]]
+            header_str = " ".join(headers)
+            if "slot" in header_str and "code" in header_str:
+                try:
+                    idx_code = get_col_index(headers, "code")
+                    idx_title = get_col_index(headers, "title")
+                    idx_slot = get_col_index(headers, "slot")
+                    idx_room = get_col_index(headers, "room")
+                    if -1 not in (idx_code, idx_title, idx_slot, idx_room):
+                        for row in table[1:]:
+                            if len(row) > idx_room:
+                                slots_found = re.findall(r'\b[A-Z]{1,2}\d*\b', row[idx_slot])
+                                for s in slots_found:
+                                    student_slots[s] = {"subject": f"{row[idx_code]} - {row[idx_title]}", "room": row[idx_room]}
+                except: pass
                 
-                if "slot" in header_str and "code" in header_str:
-                    found_slots = True
-                    try:
-                        idx_code = get_col_index(headers, "code")
-                        idx_title = get_col_index(headers, "title")
-                        idx_slot = get_col_index(headers, "slot")
-                        idx_room = get_col_index(headers, "room")
-                        if -1 not in (idx_code, idx_title, idx_slot, idx_room):
-                            for row in table[1:]:
-                                if len(row) > idx_room:
-                                    slots_found = re.findall(r'\b[A-Z]{1,2}\d*\b', row[idx_slot])
-                                    for s in slots_found:
-                                        student_slots[s] = {"subject": f"{row[idx_code]} - {row[idx_title]}", "room": row[idx_room]}
-                    except: pass
-            
-            if found_slots:
-                log_time("  ✓ Slot tables rendered")
-                break
-            page.wait_for_timeout(100)
-
-        # --- TIMETABLE STEP 2 (MASTER TIMINGS) ---
-        log_time(f"7. Mapping to Master (Batch {batch})...")
+        log_time(f"7. Fetching Master Timetable ({batch}) via API...")
         final_tt = {"1": [], "2": [], "3": [], "4": [], "5": []}
-        page.evaluate(f"window.location.hash = 'Page:Unified_Time_Table_2025_Batch_{batch}';")
+        master_tables = fetch_view(f"Unified_Time_Table_2025_Batch_{batch}")
         
-        for attempt in range(100): # max 10s
-            master_tables = get_all_tables()
-            found_master = False
-            for table in master_tables:
-                if not table: continue
-                
-                if len(table) > 2 and any("from" in str(table[0][0]).lower() or "day" in str(table[0][0]).lower() for row in table):
-                    found_master = True
-                    
-                time_cols, from_row, to_row, start_row = [], [], [], -1
-                
-                for r_idx, row in enumerate(table):
-                    first_cell = str(row[0]).lower().replace('\n', ' ').strip()
-                    if "from" in first_cell and "to" not in first_cell: from_row = row[1:]
-                    elif "to" in first_cell and "from" not in first_cell: to_row = row[1:]
-                    elif "from" in first_cell and "to" in first_cell: time_cols = [str(c).replace('\n', ' ') for c in row[1:]]
-                    elif any(x in first_cell for x in ["hour", "order", "time", "period"]):
-                        if not time_cols and not from_row: time_cols = [str(c).replace('\n', ' ') for c in row[1:]]
-                    elif "day" in first_cell and any(str(i) in first_cell for i in range(1, 6)):
-                        start_row = r_idx
-                        break
-                        
-                if not time_cols and from_row and to_row:
-                    time_cols = [f"{f} - {t}" for f, t in zip(from_row, to_row)]
-                        
-                if start_row != -1:
-                    for row in table[start_row:]:
-                        try:
-                            day_match = re.search(r'\d+', row[0])
-                            if not day_match: continue
-                            day_order = day_match.group()
-                            
-                            if day_order in final_tt:
-                                seen_entries = set()
-                                for i, cell in enumerate(row[1:]):
-                                    slots_in_cell = re.findall(r'\b[A-Z]{1,2}\d*\b', cell)
-                                    for s in slots_in_cell:
-                                        if s in student_slots:
-                                            t_str = time_cols[i] if i < len(time_cols) else f"Period {i+1}"
-                                            t_str = re.sub(r'\s+', ' ', t_str).strip()
-                                            entry_key = f"{t_str}-{student_slots[s]['subject']}"
-                                            if entry_key not in seen_entries:
-                                                final_tt[day_order].append({"time": t_str, "subject": student_slots[s]['subject'], "room": student_slots[s]['room']})
-                                                seen_entries.add(entry_key)
-                        except: pass
+        for table in master_tables:
+            if len(table) < 3: continue
             
-            if found_master:
-                log_time("  ✓ Master TT rendered")
-                break
-            page.wait_for_timeout(100)
+            time_cols, from_row, to_row, start_row = [], [], [], -1
+            for r_idx, row in enumerate(table):
+                first_cell = str(row[0]).lower().replace('\n', ' ').strip()
+                if "from" in first_cell and "to" not in first_cell: from_row = row[1:]
+                elif "to" in first_cell and "from" not in first_cell: to_row = row[1:]
+                elif "from" in first_cell and "to" in first_cell: time_cols = [str(c).replace('\n', ' ') for c in row[1:]]
+                elif any(x in first_cell for x in ["hour", "order", "time", "period"]):
+                    if not time_cols and not from_row: time_cols = [str(c).replace('\n', ' ') for c in row[1:]]
+                elif "day" in first_cell and any(str(i) in first_cell for i in range(1, 6)):
+                    start_row = r_idx
+                    break
+                    
+            if not time_cols and from_row and to_row:
+                time_cols = [f"{f} - {t}" for f, t in zip(from_row, to_row)]
+                    
+            if start_row != -1:
+                for row in table[start_row:]:
+                    try:
+                        day_match = re.search(r'\d+', row[0])
+                        if not day_match: continue
+                        day_order = day_match.group()
+                        
+                        if day_order in final_tt:
+                            seen_entries = set()
+                            for i, cell in enumerate(row[1:]):
+                                slots_in_cell = re.findall(r'\b[A-Z]{1,2}\d*\b', cell)
+                                for s in slots_in_cell:
+                                    if s in student_slots:
+                                        t_str = time_cols[i] if i < len(time_cols) else f"Period {i+1}"
+                                        t_str = re.sub(r'\s+', ' ', t_str).strip()
+                                        entry_key = f"{t_str}-{student_slots[s]['subject']}"
+                                        if entry_key not in seen_entries:
+                                            final_tt[day_order].append({"time": t_str, "subject": student_slots[s]['subject'], "room": student_slots[s]['room']})
+                                            seen_entries.add(entry_key)
+                    except: pass
 
-        # Output payload
         out_queue.put({
             'success': True, 
             'profile': profile_data,
@@ -456,13 +403,10 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
             'marks': parsed_marks,
             'timetable': final_tt
         })
-        log_time("Scrape Complete! Returning data.")
+        log_time("Scrape Complete! Returning API data.")
 
     except Exception as e:
-        out_queue.put({'success': False, 'error': f"Scraper Exception: {str(e)}"})
-    finally:
-        if browser: browser.close()
-        if p: p.stop()
+        out_queue.put({'success': False, 'error': f"API Scraper Exception: {str(e)}"})
 
 @app.route('/api/start_session', methods=['POST'])
 def start_session():
