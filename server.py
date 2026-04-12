@@ -144,15 +144,25 @@ def save_student_to_db(net_id, name, register_no, att_data, marks_data):
 
 
 def scrape_academia_worker(reg_no, pwd, batch, out_queue):
+    import time
+    start_time = time.time()
+    def log_time(msg):
+        print(f"[{reg_no}] [{time.time() - start_time:.2f}s] {msg}", flush=True)
+        
     p = None
     browser = None
     try:
         p = sync_playwright().start()
-        print(f"[{reg_no}] Launching Academia Sniper...")
+        log_time("Launching Academia Sniper...")
         
         browser = p.chromium.launch(
             headless=True,
-            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+            args=[
+                '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+                '--disable-extensions', '--disable-background-networking',
+                '--no-first-run', '--disable-sync',
+                '--blink-settings=imagesEnabled=false'
+            ]
         )
         
         context = browser.new_context(
@@ -160,13 +170,22 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
             viewport={'width': 1280, 'height': 720}
         )
         page = context.new_page()
-        page.set_default_timeout(90000)
+        page.set_default_timeout(30000)
+
+        # Block images and media at network level to speed up every page load
+        def _block_heavy_assets(route):
+            if route.request.resource_type in ("image", "media"):
+                route.abort()
+            else:
+                route.continue_()
+        page.route("**/*", _block_heavy_assets)
 
         if "@" not in reg_no: reg_no += "@srmist.edu.in"
 
-        print(f"[{reg_no}] 1. Loading Academia...")
+        log_time("1. Loading Academia...")
         try:
-            page.goto("https://academia.srmist.edu.in/", wait_until="networkidle", timeout=60000)
+            # commit is instantaneous
+            page.goto("https://academia.srmist.edu.in/", wait_until="commit", timeout=60000)
         except Exception as e:
             out_queue.put({'success': False, 'error': f'Portal failed to load: {str(e)}'})
             return
@@ -185,9 +204,14 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
                 except: continue
             return None
             
-        # Login Logic
+        # Login Logic - Poll aggressively for inputs
         try:
-            email_input = find_in_frames('input[type="email"], input[type="text"], input[name="LOGIN_ID"]', filter_not_text="hidden")
+            email_input = None
+            for _ in range(30):
+                email_input = find_in_frames('input[type="email"], input[type="text"], input[name="LOGIN_ID"]', filter_not_text="hidden")
+                if email_input: break
+                page.wait_for_timeout(500)
+                
             if not email_input: raise Exception("Email box not found")
             email_input.fill(reg_no, force=True)
             
@@ -196,30 +220,41 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
             else: page.keyboard.press("Enter")
 
             pwd_input = None
-            for _ in range(10): 
+            for _ in range(20): 
                 pwd_input = find_in_frames('input[type="password"], input[name="PASSWORD"]')
                 if pwd_input: break
-                page.wait_for_timeout(1000)
+                page.wait_for_timeout(500)
                 
             if not pwd_input: raise Exception("Password box not found")
-            pwd_input.type(pwd, delay=30) 
+            pwd_input.fill(pwd, force=True)  # Instant paste
             
             submit_btn = find_in_frames('button, input[type="submit"]', filter_text="sign in|login|submit|verify")
             if submit_btn: submit_btn.click(force=True, timeout=5000)
             else: page.keyboard.press("Enter")
-            page.wait_for_timeout(5000) 
+
+            # Smart-wait for dashboard
+            _logged_in = False
+            for _i in range(20):
+                page.wait_for_timeout(500)
+                if len(page.frames) > 1:
+                    _logged_in = True
+                    log_time(f"  ✓ Login detected")
+                    break
+                    
+            if not _logged_in:
+                page.wait_for_timeout(2000) 
 
             terminate_btn = page.locator('button, a').filter(has_text=re.compile(r"terminate", re.IGNORECASE)).first
-            if terminate_btn.count() > 0: terminate_btn.click(force=True); page.wait_for_timeout(4000)
+            if terminate_btn.count() > 0:
+                terminate_btn.click(force=True)
+                for _i in range(8):
+                    page.wait_for_timeout(500)
+                    if terminate_btn.count() == 0: break
         except Exception as e:
             out_queue.put({'success': False, 'error': f'Auth Failed: {str(e)}'})
             return
 
         def get_all_tables():
-            try:
-                page.wait_for_selector("iframe", timeout=10000)
-            except Exception as e:
-                print("Wait for iframe error:", str(e))
             all_tables = []
             for frame in page.frames:
                 try:
@@ -248,23 +283,30 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
             return -1
 
         # --- ATTENDANCE & MARKS ---
-        print(f"[{reg_no}] 5. Scoping Attendance...")
-        page.goto("https://academia.srmist.edu.in/#Page:My_Attendance")
-        page.wait_for_timeout(3000)
-        page.reload(wait_until="networkidle")
-        page.wait_for_timeout(5000)
+        log_time("5. Scoping Attendance...")
+        page.goto("https://academia.srmist.edu.in/#Page:My_Attendance", wait_until="commit")
 
-        raw_tables = get_all_tables()
+        raw_tables = []
+        profile_data = {"name": "STUDENT", "regNo": reg_no.split('@')[0].upper(), "course": "B.Tech", "semester": "Current"}
         parsed_att = []
         parsed_marks = []
+        
+        # Aggressive Parse-Polling for Attendance
+        for attempt in range(25): # max 12.5s
+            raw_tables = get_all_tables()
+            found_attendance = False
+            for table in raw_tables:
+                if not table: continue
+                header_str = " ".join([str(h).lower() for h in table[0]])
+                if "hours conducted" in header_str and "absent" in header_str:
+                    found_attendance = True
+                    break
+            if found_attendance:
+                log_time("  ✓ Attendance tables rendered")
+                break
+            page.wait_for_timeout(500)
 
-        # Profile Extraction
-        profile_data = {
-            "name": "STUDENT",
-            "regNo": reg_no.split('@')[0].upper(),
-            "course": "B.Tech",
-            "semester": "Current"
-        }
+        # Parse Profile & Attendance
         for table in raw_tables:
             if not table: continue
             for row in table:
@@ -279,157 +321,130 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
                         elif "semester" in k:
                             if len(v) > 0 and len(v) <= 2: profile_data["semester"] = v
 
-        for table in raw_tables:
-            if not table: continue
             headers = [str(h).lower() for h in table[0]]
             header_str = " ".join(headers)
 
-            # Dynamic Attendance Parsing
             if "hours conducted" in header_str and "absent" in header_str:
                 try:
                     idx_code = get_col_index(headers, "code")
                     idx_title = get_col_index(headers, "title")
                     idx_cond = get_col_index(headers, "conducted")
                     idx_abs = get_col_index(headers, "absent")
-                    
-                    if -1 in (idx_code, idx_title, idx_cond, idx_abs): continue
-                    
-                    for row in table[1:]:
-                        if len(row) > max(idx_cond, idx_abs):
-                            cond = int(float(row[idx_cond] or 0))
-                            absent = int(float(row[idx_abs] or 0))
-                            parsed_att.append({
-                                "courseTitle": f"{row[idx_code]} - {row[idx_title][:20]}",
-                                "attended": max(0, cond - absent),
-                                "total": cond
-                            })
-                except Exception as e:
-                    print("Parsing error (Attendance):", str(e))
-                    continue
+                    if -1 not in (idx_code, idx_title, idx_cond, idx_abs):
+                        for row in table[1:]:
+                            if len(row) > max(idx_cond, idx_abs):
+                                cond = int(float(row[idx_cond] or 0))
+                                absent = int(float(row[idx_abs] or 0))
+                                parsed_att.append({
+                                    "courseTitle": f"{row[idx_code]} - {row[idx_title][:20]}",
+                                    "attended": max(0, cond - absent),
+                                    "total": cond
+                                })
+                except: pass
 
-            # Dynamic Marks Parsing
             elif any(kw in header_str for kw in ["test performance", "assessment", "marks", "internal"]):
                 try:
                     idx_code = get_col_index(headers, "code")
                     idx_perf = get_col_index(headers, "performance", "assessment", "marks", "internal")
-                    
-                    if idx_code == -1 or idx_perf == -1: continue
-                    
-                    for row in table[1:]:
-                        if len(row) > idx_perf:
-                            parsed_marks.append({
-                                "courseTitle": row[idx_code],
-                                "Test Performance": row[idx_perf].replace('\n', ' | ')
-                            })
-                except Exception as e:
-                    print("Parsing error (Marks):", str(e))
-                    continue
+                    if idx_code != -1 and idx_perf != -1:
+                        for row in table[1:]:
+                            if len(row) > idx_perf:
+                                parsed_marks.append({
+                                    "courseTitle": row[idx_code],
+                                    "Test Performance": row[idx_perf].replace('\n', ' | ')
+                                })
+                except: pass
 
         # --- TIMETABLE STEP 1 (STUDENT SLOTS) ---
-        print(f"[{reg_no}] 6. Scoping Registered Slots...")
+        log_time("6. Scoping Registered Slots...")
         student_slots = {}
-        # Reverted 2024_25 back to 2023_24 based on Academia's weird hardcoded URL hash
-        page.goto("https://academia.srmist.edu.in/#Page:My_Time_Table_2023_24")
-        page.wait_for_timeout(5000)
-        
-        slot_tables = get_all_tables()
-        for table in slot_tables:
-            if not table: continue
-            headers = [str(h).lower() for h in table[0]]
-            header_str = " ".join(headers)
+        page.goto("https://academia.srmist.edu.in/#Page:My_Time_Table_2023_24", wait_until="commit")
+
+        for attempt in range(20): # max 10s
+            slot_tables = get_all_tables()
+            found_slots = False
+            for table in slot_tables:
+                if not table: continue
+                headers = [str(h).lower() for h in table[0]]
+                header_str = " ".join(headers)
+                
+                if "slot" in header_str and "code" in header_str:
+                    found_slots = True
+                    try:
+                        idx_code = get_col_index(headers, "code")
+                        idx_title = get_col_index(headers, "title")
+                        idx_slot = get_col_index(headers, "slot")
+                        idx_room = get_col_index(headers, "room")
+                        if -1 not in (idx_code, idx_title, idx_slot, idx_room):
+                            for row in table[1:]:
+                                if len(row) > idx_room:
+                                    slots_found = re.findall(r'\b[A-Z]{1,2}\d*\b', row[idx_slot])
+                                    for s in slots_found:
+                                        student_slots[s] = {"subject": f"{row[idx_code]} - {row[idx_title]}", "room": row[idx_room]}
+                    except: pass
             
-            if "slot" in header_str and "code" in header_str:
-                try:
-                    idx_code = get_col_index(headers, "code")
-                    idx_title = get_col_index(headers, "title")
-                    idx_slot = get_col_index(headers, "slot")
-                    idx_room = get_col_index(headers, "room")
-                    
-                    if -1 in (idx_code, idx_title, idx_slot, idx_room): continue
-                    
-                    for row in table[1:]:
-                        if len(row) > idx_room:
-                            # Refined Regex matching (matches A, P49, PT2, etc)
-                            slots_found = re.findall(r'\b[A-Z]{1,2}\d*\b', row[idx_slot])
-                            for s in slots_found:
-                                student_slots[s] = {
-                                    "subject": f"{row[idx_code]} - {row[idx_title]}",
-                                    "room": row[idx_room]
-                                }
-                except Exception as e:
-                    print("Parsing error (Slots):", str(e))
-                    continue
+            if found_slots:
+                log_time("  ✓ Slot tables rendered")
+                break
+            page.wait_for_timeout(500)
 
         # --- TIMETABLE STEP 2 (MASTER TIMINGS) ---
-        print(f"[{reg_no}] 7. Mapping to Master (Batch {batch})...")
+        log_time(f"7. Mapping to Master (Batch {batch})...")
         final_tt = {"1": [], "2": [], "3": [], "4": [], "5": []}
-        page.goto(f"https://academia.srmist.edu.in/#Page:Unified_Time_Table_2025_Batch_{batch}")
-        page.wait_for_timeout(5000)
+        page.goto(f"https://academia.srmist.edu.in/#Page:Unified_Time_Table_2025_Batch_{batch}", wait_until="commit")
         
-        master_tables = get_all_tables()
-        for table in master_tables:
-            if not table: continue
-            
-            time_cols = []
-            from_row = []
-            to_row = []
-            start_row = -1
-            
-            for r_idx, row in enumerate(table):
-                first_cell = str(row[0]).lower().replace('\n', ' ').strip()
+        for attempt in range(20): # max 10s
+            master_tables = get_all_tables()
+            found_master = False
+            for table in master_tables:
+                if not table: continue
                 
-                if "from" in first_cell and "to" not in first_cell: from_row = row[1:]
-                elif "to" in first_cell and "from" not in first_cell: to_row = row[1:]
-                elif "from" in first_cell and "to" in first_cell:
-                    time_cols = [str(c).replace('\n', ' ') for c in row[1:]]
-                elif any(x in first_cell for x in ["hour", "order", "time", "period"]):
-                    if not time_cols and not from_row:
-                        time_cols = [str(c).replace('\n', ' ') for c in row[1:]]
-                elif "day" in first_cell and any(str(i) in first_cell for i in range(1, 6)):
-                    start_row = r_idx
-                    break
+                if len(table) > 2 and any("from" in str(table[0][0]).lower() or "day" in str(table[0][0]).lower() for row in table):
+                    found_master = True
                     
-            if not time_cols and from_row and to_row:
-                for f, t in zip(from_row, to_row):
-                    time_cols.append(f"{f} - {t}")
-                    
-            if start_row != -1:
-                for row in table[start_row:]:
-                    try:
-                        day_match = re.search(r'\d+', row[0])
-                        if not day_match: continue
-                        day_order = day_match.group()
+                time_cols, from_row, to_row, start_row = [], [], [], -1
+                
+                for r_idx, row in enumerate(table):
+                    first_cell = str(row[0]).lower().replace('\n', ' ').strip()
+                    if "from" in first_cell and "to" not in first_cell: from_row = row[1:]
+                    elif "to" in first_cell and "from" not in first_cell: to_row = row[1:]
+                    elif "from" in first_cell and "to" in first_cell: time_cols = [str(c).replace('\n', ' ') for c in row[1:]]
+                    elif any(x in first_cell for x in ["hour", "order", "time", "period"]):
+                        if not time_cols and not from_row: time_cols = [str(c).replace('\n', ' ') for c in row[1:]]
+                    elif "day" in first_cell and any(str(i) in first_cell for i in range(1, 6)):
+                        start_row = r_idx
+                        break
                         
-                        if day_order in final_tt:
-                            seen_entries = set()
-                            for i, cell in enumerate(row[1:]):
-                                slots_in_cell = re.findall(r'\b[A-Z]{1,2}\d*\b', cell)
-                                for s in slots_in_cell:
-                                    if s in student_slots:
-                                        t_str = time_cols[i] if i < len(time_cols) else f"Period {i+1}"
-                                        t_str = re.sub(r'\s+', ' ', t_str).strip()
-                                        
-                                        entry_key = f"{t_str}-{student_slots[s]['subject']}"
-                                        if entry_key not in seen_entries:
-                                            final_tt[day_order].append({
-                                                "time": t_str,
-                                                "subject": student_slots[s]['subject'],
-                                                "room": student_slots[s]['room']
-                                            })
-                                            seen_entries.add(entry_key)
-                    except Exception as e:
-                        print("Parsing error (Master TT Row):", str(e))
-                        continue
+                if not time_cols and from_row and to_row:
+                    time_cols = [f"{f} - {t}" for f, t in zip(from_row, to_row)]
+                        
+                if start_row != -1:
+                    for row in table[start_row:]:
+                        try:
+                            day_match = re.search(r'\d+', row[0])
+                            if not day_match: continue
+                            day_order = day_match.group()
+                            
+                            if day_order in final_tt:
+                                seen_entries = set()
+                                for i, cell in enumerate(row[1:]):
+                                    slots_in_cell = re.findall(r'\b[A-Z]{1,2}\d*\b', cell)
+                                    for s in slots_in_cell:
+                                        if s in student_slots:
+                                            t_str = time_cols[i] if i < len(time_cols) else f"Period {i+1}"
+                                            t_str = re.sub(r'\s+', ' ', t_str).strip()
+                                            entry_key = f"{t_str}-{student_slots[s]['subject']}"
+                                            if entry_key not in seen_entries:
+                                                final_tt[day_order].append({"time": t_str, "subject": student_slots[s]['subject'], "room": student_slots[s]['room']})
+                                                seen_entries.add(entry_key)
+                        except: pass
+            
+            if found_master:
+                log_time("  ✓ Master TT rendered")
+                break
+            page.wait_for_timeout(500)
 
-        # Debug Logging for Empty Parsing
-        if not parsed_att and not parsed_marks and not student_slots:
-            try:
-                with open("debug_tables.txt", "w", encoding="utf-8") as f:
-                    f.write("RAW TABLES:\n" + str(raw_tables) + "\n\nSLOT TABLES:\n" + str(slot_tables) + "\n\nMASTER TABLES:\n" + str(master_tables))
-                print(f"[{reg_no}] Empty arrays detected. Saved to debug_tables.txt")
-            except Exception as e:
-                print(f"Failed to write debug file: {str(e)}")
-
+        # Output payload
         out_queue.put({
             'success': True, 
             'profile': profile_data,
@@ -437,6 +452,7 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
             'marks': parsed_marks,
             'timetable': final_tt
         })
+        log_time("Scrape Complete! Returning data.")
 
     except Exception as e:
         out_queue.put({'success': False, 'error': f"Scraper Exception: {str(e)}"})

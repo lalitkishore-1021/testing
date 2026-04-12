@@ -2527,8 +2527,14 @@
                 return;
             }
 
-            statusText.innerText = "🔄 Syncing with Academia... This takes up to 90 seconds.";
+            let secondsPassed = 0;
+            statusText.innerHTML = `🔄 Syncing with Academia... <span style="font-family: inherit; font-size: 1.1rem; color: #fff; background: rgba(255,170,0,0.2); padding: 2px 8px; border-radius: 6px;">0s</span>`;
             statusText.style.color = "var(--primary)";
+            
+            let timerInterval = setInterval(() => {
+                secondsPassed++;
+                statusText.innerHTML = `🔄 Syncing with Academia... <span style="font-family: inherit; font-size: 1.1rem; color: #fff; background: rgba(255,170,0,0.2); padding: 2px 8px; border-radius: 6px;">${secondsPassed}s</span>`;
+            }, 1000);
 
             try {
                 const res = await fetch(`${BACKEND_URL}/api/start_session`, {
@@ -2538,14 +2544,15 @@
                 });
 
                 const result = await res.json();
+                clearInterval(timerInterval);
 
                 if (!result.success) {
-                    statusText.innerText = "❌ " + result.error;
+                    statusText.innerText = `❌ ${result.error} (Failed after ${secondsPassed}s)`;
                     statusText.style.color = "var(--danger)";
                     return;
                 }
 
-                statusText.innerText = "✅ Success! Dashboard Updated.";
+                statusText.innerText = `✅ Success! Synced in ${secondsPassed} seconds.`;
                 statusText.style.color = "var(--success)";
 
                 isLoggedIn = true;
@@ -2567,9 +2574,10 @@
                 try { renderMarks(marksList); } catch (e) { console.error("Marks Render Error:", e); }
                 try { renderTimetable(ttDict); } catch (e) { console.error("Timetable Render Error:", e); }
 
-                setTimeout(() => closeSyncModal(), 1500);
+                setTimeout(() => closeSyncModal(), 2000);
 
             } catch (e) {
+                clearInterval(timerInterval);
                 statusText.innerText = "❌ Could not connect to backend server.";
                 statusText.style.color = "var(--danger)";
             } finally {
