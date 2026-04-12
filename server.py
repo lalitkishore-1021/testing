@@ -172,9 +172,10 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
         page = context.new_page()
         page.set_default_timeout(30000)
 
-        # Block images and media at network level to speed up every page load
+        # AGGRESSIVELY block everything unnecessary to make it API-fast.
+        # Since we use textContent now, CSS/Fonts are irrelevant.
         def _block_heavy_assets(route):
-            if route.request.resource_type in ("image", "media"):
+            if route.request.resource_type in ("image", "media", "stylesheet", "font", "other"):
                 route.abort()
             else:
                 route.continue_()
@@ -184,7 +185,6 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
 
         log_time("1. Loading Academia...")
         try:
-            # commit is instantaneous
             page.goto("https://academia.srmist.edu.in/", wait_until="commit", timeout=60000)
         except Exception as e:
             out_queue.put({'success': False, 'error': f'Portal failed to load: {str(e)}'})
@@ -204,13 +204,13 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
                 except: continue
             return None
             
-        # Login Logic - Poll aggressively for inputs
+        # Login Logic - Poll natively fast (100ms)
         try:
             email_input = None
-            for _ in range(30):
+            for _ in range(150): # 15s max
                 email_input = find_in_frames('input[type="email"], input[type="text"], input[name="LOGIN_ID"]', filter_not_text="hidden")
                 if email_input: break
-                page.wait_for_timeout(500)
+                page.wait_for_timeout(100)
                 
             if not email_input: raise Exception("Email box not found")
             email_input.fill(reg_no, force=True)
@@ -220,41 +220,43 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
             else: page.keyboard.press("Enter")
 
             pwd_input = None
-            for _ in range(20): 
+            for _ in range(150): 
                 pwd_input = find_in_frames('input[type="password"], input[name="PASSWORD"]')
                 if pwd_input: break
-                page.wait_for_timeout(500)
+                page.wait_for_timeout(100)
                 
             if not pwd_input: raise Exception("Password box not found")
-            pwd_input.fill(pwd, force=True)  # Instant paste
+            pwd_input.fill(pwd, force=True)
             
             submit_btn = find_in_frames('button, input[type="submit"]', filter_text="sign in|login|submit|verify")
             if submit_btn: submit_btn.click(force=True, timeout=5000)
             else: page.keyboard.press("Enter")
 
-            # Smart-wait for dashboard
+            # Smart-wait for dashboard (100ms intervals)
             _logged_in = False
-            for _i in range(20):
-                page.wait_for_timeout(500)
+            for _i in range(100): # 10s max
+                page.wait_for_timeout(100)
                 if len(page.frames) > 1:
+                    # check if it actually submitted and moved on
                     _logged_in = True
-                    log_time(f"  ✓ Login detected")
+                    log_time(f"  ✓ Login authenticated")
                     break
                     
             if not _logged_in:
-                page.wait_for_timeout(2000) 
+                page.wait_for_timeout(1000) 
 
             terminate_btn = page.locator('button, a').filter(has_text=re.compile(r"terminate", re.IGNORECASE)).first
             if terminate_btn.count() > 0:
                 terminate_btn.click(force=True)
-                for _i in range(8):
-                    page.wait_for_timeout(500)
+                for _i in range(20):
+                    page.wait_for_timeout(100)
                     if terminate_btn.count() == 0: break
         except Exception as e:
             out_queue.put({'success': False, 'error': f'Auth Failed: {str(e)}'})
             return
 
         def get_all_tables():
+            # Use textContent instead of innerText to bypass CSS layout engine completely!
             all_tables = []
             for frame in page.frames:
                 try:
@@ -264,7 +266,7 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
                                 let rowArr = [];
                                 Array.from(tr.querySelectorAll('td, th')).forEach(td => {
                                     let span = td.colSpan || 1;
-                                    let text = td.innerText.trim();
+                                    let text = td.textContent.trim().replace(/\\s+/g, ' ');
                                     for(let i=0; i<span; i++) rowArr.push(text);
                                 });
                                 return rowArr;
@@ -284,15 +286,16 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
 
         # --- ATTENDANCE & MARKS ---
         log_time("5. Scoping Attendance...")
-        page.goto("https://academia.srmist.edu.in/#Page:My_Attendance", wait_until="commit")
+        # Instant SPA Routing bypasses top-level network reloads
+        page.evaluate("window.location.hash = 'Page:My_Attendance';")
 
         raw_tables = []
         profile_data = {"name": "STUDENT", "regNo": reg_no.split('@')[0].upper(), "course": "B.Tech", "semester": "Current"}
         parsed_att = []
         parsed_marks = []
         
-        # Aggressive Parse-Polling for Attendance
-        for attempt in range(25): # max 12.5s
+        # 100ms ultra-fast Parse-Polling
+        for attempt in range(120): # max 12s
             raw_tables = get_all_tables()
             found_attendance = False
             for table in raw_tables:
@@ -304,7 +307,7 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
             if found_attendance:
                 log_time("  ✓ Attendance tables rendered")
                 break
-            page.wait_for_timeout(500)
+            page.wait_for_timeout(100)
 
         # Parse Profile & Attendance
         for table in raw_tables:
@@ -358,9 +361,10 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
         # --- TIMETABLE STEP 1 (STUDENT SLOTS) ---
         log_time("6. Scoping Registered Slots...")
         student_slots = {}
-        page.goto("https://academia.srmist.edu.in/#Page:My_Time_Table_2023_24", wait_until="commit")
+        # Instant SPA Routing
+        page.evaluate("window.location.hash = 'Page:My_Time_Table_2023_24';")
 
-        for attempt in range(20): # max 10s
+        for attempt in range(100): # max 10s
             slot_tables = get_all_tables()
             found_slots = False
             for table in slot_tables:
@@ -386,14 +390,14 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
             if found_slots:
                 log_time("  ✓ Slot tables rendered")
                 break
-            page.wait_for_timeout(500)
+            page.wait_for_timeout(100)
 
         # --- TIMETABLE STEP 2 (MASTER TIMINGS) ---
         log_time(f"7. Mapping to Master (Batch {batch})...")
         final_tt = {"1": [], "2": [], "3": [], "4": [], "5": []}
-        page.goto(f"https://academia.srmist.edu.in/#Page:Unified_Time_Table_2025_Batch_{batch}", wait_until="commit")
+        page.evaluate(f"window.location.hash = 'Page:Unified_Time_Table_2025_Batch_{batch}';")
         
-        for attempt in range(20): # max 10s
+        for attempt in range(100): # max 10s
             master_tables = get_all_tables()
             found_master = False
             for table in master_tables:
@@ -442,7 +446,7 @@ def scrape_academia_worker(reg_no, pwd, batch, out_queue):
             if found_master:
                 log_time("  ✓ Master TT rendered")
                 break
-            page.wait_for_timeout(500)
+            page.wait_for_timeout(100)
 
         # Output payload
         out_queue.put({
