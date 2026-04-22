@@ -14,6 +14,7 @@
         href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700;900&family=Open+Sans:wght@400;600&display=swap"
         rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
     <style>
         :root {
@@ -1574,15 +1575,6 @@
                 </div>
             </div>
 
-            <!-- HOLIDAY BANNER (HOME) -->
-            <div id="home-holiday-banner" class="holiday-banner fade-in-up" style="display: none; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(255, 170, 0, 0.15), rgba(255, 85, 0, 0.1)); border: 1px solid rgba(255, 170, 0, 0.3); border-radius: 15px; padding: 15px 20px; margin: 0 auto 20px; max-width: 600px; color: var(--text-main); font-family: 'Montserrat', sans-serif; gap: 15px; box-shadow: 0 10px 30px rgba(255,170,0,0.1);">
-                <div style="font-size: 2.2rem; filter: drop-shadow(0 0 10px rgba(255,170,0,0.5));">🌴</div>
-                <div style="text-align: left;">
-                    <h3 style="margin: 0 0 5px; color: var(--primary); font-size: 1.1rem; text-transform: uppercase;">It's a Holiday!</h3>
-                    <p id="home-holiday-name" style="margin: 0; font-size: 0.85rem; color: var(--text-sub);">No classes today. Take a break and recharge.</p>
-                </div>
-            </div>
-
             <h3 class="section-title">Quick Actions</h3>
             <div class="quick-actions-grid">
                 <div class="action-card" onclick="openProject('oopsBanner')">
@@ -1653,16 +1645,6 @@
                     <div>
                         <h4 class="action-title">Cab Sharing</h4>
                         <p class="action-sub">Find travel partners</p>
-                    </div>
-                </div>
-                <div class="action-card" onclick="switchView('lostfound-view'); loadLostFound();">
-                    <div class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="11" cy="11" r="8"></circle>
-                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                    </svg></div>
-                    <div>
-                        <h4 class="action-title">Lost & Found</h4>
-                        <p class="action-sub">Report or find items</p>
                     </div>
                 </div>
                 <div class="action-card" onclick="switchView('events-view'); loadEvents();">
@@ -1802,9 +1784,9 @@
                 <p class="subtitle" style="margin-bottom: 20px;">Anonymous Confessions, Questions & Thoughts</p>
             </div>
 
-            <div style="max-width: 600px; margin: 0 auto 30px auto; display: flex; flex-direction: column; gap: 12px; align-items: stretch;">
-                <textarea id="wall-input" placeholder="Write something anonymously..." rows="3" style="width: 100%; background: rgba(0,0,0,0.5); border: 1px solid var(--glass-border); color: #fff; padding: 18px; border-radius: 15px; font-family: inherit; font-size: 1.1rem; resize: none; min-height: 80px; max-height: 200px; line-height: 1.5; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);" oninput="this.style.height='auto'; this.style.height=Math.min(this.scrollHeight,200)+'px';"></textarea>
-                <button class="action-btn" onclick="submitWall()" style="margin: 0; padding: 14px; border-radius: 12px; font-size: 1rem; letter-spacing: 1px; box-shadow: 0 4px 15px rgba(255,170,0,0.3);">Post to Wall</button>
+            <div style="max-width: 600px; margin: 0 auto 30px auto; display: flex; gap: 10px;">
+                <input id="wall-input" type="text" placeholder="Write something anonymously..." style="flex: 1; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #fff; padding: 15px; border-radius: 30px;">
+                <button class="action-btn" onclick="submitWall()" style="margin: 0; padding: 0 25px; border-radius: 30px;">Post</button>
             </div>
             <p id="wall-status" style="font-size: 0.85rem; font-weight: bold; text-align: center; color: var(--danger);"></p>
 
@@ -1823,26 +1805,6 @@
             </div>
 
             <div id="cabs-list" style="max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px;"></div>
-        </div>
-
-        <div id="lostfound-view" class="app-view">
-            <div class="view-header">
-                <button class="back-btn" onclick="switchNav('home-view', document.querySelector('.nav-item'))">&#8592; Back to Home</button>
-                <h2 class="gallery-title">Lost & Found 🔍</h2>
-                <p class="subtitle" style="margin-bottom: 20px;">Report lost items or help reunite found ones</p>
-            </div>
-
-            <div class="tab-container" id="lf-tabs" style="margin-bottom: 20px; flex-wrap: wrap;">
-                <div class="tab-btn active" onclick="switchLFCategory('All', this)">All</div>
-                <div class="tab-btn" onclick="switchLFCategory('Lost', this)">Lost</div>
-                <div class="tab-btn" onclick="switchLFCategory('Found', this)">Found</div>
-            </div>
-
-            <div style="text-align: center; margin-bottom: 30px;">
-                <button class="action-btn" onclick="document.getElementById('lfSubmitModal').style.display='flex'; document.getElementById('lf-status').innerText='';" style="background: linear-gradient(135deg, #e65c00, #f59e0b); color: #fff; font-weight: 900; font-size: 1rem; padding: 14px 30px; border-radius: 30px; box-shadow: 0 10px 20px rgba(230,92,0,0.4); text-transform: uppercase; max-width: 300px; margin: 0 auto;">+ Report Item</button>
-            </div>
-
-            <div id="lf-list" style="max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px;"></div>
         </div>
 
         <div id="events-view" class="app-view">
@@ -1937,6 +1899,13 @@
             <div id="overall-attendance" class="result-box"
                 style="margin-bottom: 20px; max-width: 600px; margin: 0 auto 20px auto;">Overall: 0%</div>
             <div id="attendance-list" style="max-width: 600px; margin: 0 auto;"></div>
+            <!-- Attendance Chart -->
+            <div id="attendance-chart-container" style="max-width: 600px; margin: 20px auto 0; display: none;">
+                <div class="image-card" style="padding: 25px; cursor: default; transform: none;">
+                    <div class="overview-title" style="margin-bottom: 18px; font-family: 'Montserrat', sans-serif; font-size: 0.85rem; letter-spacing: 2px; color: var(--text-sub); text-transform: uppercase;">📊 Attendance Overview</div>
+                    <canvas id="attendance-chart" style="max-height: 280px;"></canvas>
+                </div>
+            </div>
         </div>
 
         <div id="marks-view" class="app-view">
@@ -1960,6 +1929,13 @@
                         style="color:var(--primary);">Sync Button</strong> in the top right to fetch your marks.</p>
             </div>
             <div id="marks-list" style="max-width: 600px; margin: 0 auto; display: none;"></div>
+            <!-- Marks Radar Chart -->
+            <div id="marks-chart-container" style="max-width: 600px; margin: 20px auto 30px; display: none;">
+                <div class="image-card" style="padding: 25px; cursor: default; transform: none;">
+                    <div class="overview-title" style="margin-bottom: 18px; font-family: 'Montserrat', sans-serif; font-size: 0.85rem; letter-spacing: 2px; color: var(--text-sub); text-transform: uppercase;">🎯 Performance Radar</div>
+                    <canvas id="marks-chart" style="max-height: 320px;"></canvas>
+                </div>
+            </div>
         </div>
 
         <div id="calendar-view" class="app-view">
@@ -2013,11 +1989,11 @@
             </div>
             
             <!-- HOLIDAY BANNER (TIMETABLE) -->
-            <div id="timetable-holiday-banner" class="holiday-banner fade-in-up" style="display: none; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(255, 170, 0, 0.15), rgba(255, 85, 0, 0.1)); border: 1px solid rgba(255, 170, 0, 0.3); border-radius: 15px; padding: 12px 15px; margin: 0 15px 20px; width: calc(100% - 30px); max-width: 600px; color: var(--text-main); font-family: 'Montserrat', sans-serif; gap: 12px; box-shadow: 0 10px 30px rgba(255,170,0,0.1); box-sizing: border-box;">
-                <div style="font-size: 2rem; filter: drop-shadow(0 0 10px rgba(255,170,0,0.5)); flex-shrink: 0;">🌴</div>
-                <div style="text-align: left; min-width: 0;">
-                    <h3 style="margin: 0 0 5px; color: var(--primary); font-size: 1rem; text-transform: uppercase;">It's a Holiday!</h3>
-                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-sub);">No classes today. Take a break and recharge.</p>
+            <div id="timetable-holiday-banner" class="holiday-banner fade-in-up" style="display: none; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(255, 170, 0, 0.15), rgba(255, 85, 0, 0.1)); border: 1px solid rgba(255, 170, 0, 0.3); border-radius: 15px; padding: 15px 20px; margin: 0 auto 20px; max-width: 600px; color: var(--text-main); font-family: 'Montserrat', sans-serif; gap: 15px; box-shadow: 0 10px 30px rgba(255,170,0,0.1);">
+                <div style="font-size: 2.2rem; filter: drop-shadow(0 0 10px rgba(255,170,0,0.5));">🌴</div>
+                <div style="text-align: left;">
+                    <h3 style="margin: 0 0 5px; color: var(--primary); font-size: 1.1rem; text-transform: uppercase;">It's a Holiday!</h3>
+                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-sub);">No classes today. Take a break and recharge.</p>
                 </div>
             </div>
             <div class="tt-day-selector">
@@ -2125,7 +2101,6 @@
     <!-- GLOBAL NOTIFICATION LIGHTBOX -->
     <div id="lightbox" class="lightbox" onclick="if(event.target === this) closeLightbox()">
         <span class="close-btn" onclick="closeLightbox()">&times;</span>
-        <img id="lightbox-img" src="">
     </div>
 
     <!-- PROJECT HUB SUBMIT MODAL (Independent Lightbox) -->
@@ -2144,7 +2119,8 @@
             </div>
         </div>
     </div>
-
+        <img id="lightbox-img" src="">
+    </div>
 
     <!-- MARKETPLACE SUBMIT MODAL -->
     <div id="marketSubmitModal" class="lightbox" onclick="if(event.target===this) document.getElementById('marketSubmitModal').style.display='none'">
@@ -2210,30 +2186,6 @@
         </div>
     </div>
 
-    <!-- LOST & FOUND SUBMIT MODAL -->
-    <div id="lfSubmitModal" class="lightbox" onclick="if(event.target===this) document.getElementById('lfSubmitModal').style.display='none'">
-        <div class="sync-modal-content">
-            <span class="close-btn" style="top:10px;right:15px;font-size:30px;" onclick="document.getElementById('lfSubmitModal').style.display='none'">&times;</span>
-            <h3 style="color:var(--primary); font-family:'Montserrat',sans-serif; margin-bottom: 20px;">Report Lost / Found Item</h3>
-            <div style="display: flex; flex-direction: column; gap: 12px;">
-                <input id="lf-title" class="modal-input" placeholder="Item Name *" style="background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #fff; padding: 13px; border-radius: 12px;">
-                <textarea id="lf-desc" class="modal-input" placeholder="Description (color, brand, any details)" rows="3" style="background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #fff; padding: 13px; border-radius: 12px; resize: none; font-family: inherit;"></textarea>
-                <select id="lf-category" class="modal-input" style="background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #fff; padding: 13px; border-radius: 12px; appearance: none;">
-                    <option value="" disabled selected>Lost or Found? *</option>
-                    <option value="Lost">I Lost Something</option>
-                    <option value="Found">I Found Something</option>
-                </select>
-                <input id="lf-location" class="modal-input" placeholder="Place / Location (e.g. TP Food Court, Library)" style="background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #fff; padding: 13px; border-radius: 12px;">
-                <label for="lf-image-file" style="background: rgba(0,0,0,0.3); border: 1px dashed #e65c00; color: #fff; padding: 13px; border-radius: 12px; cursor: pointer; text-align: center;">
-                    📷 Upload a photo of the item
-                    <input type="file" id="lf-image-file" accept="image/*" style="display: none;" onchange="this.parentElement.innerHTML = '✅ Photo Selected: ' + this.files[0].name + '<input type=\\\'file\\\' id=\\\'lf-image-file\\\' accept=\\\'image/*\\\' style=\\\'display: none;\\\'>'; document.getElementById('lf-image-file').files = this.files;">
-                </label>
-                <button class="action-btn" onclick="submitLostFound()" style="margin-top: 5px; background: linear-gradient(135deg, #e65c00, #f59e0b); color: #fff;">REPORT ITEM</button>
-                <p id="lf-status" style="font-size: 0.85rem; font-weight: bold; text-align: center; min-height: 20px;"></p>
-            </div>
-        </div>
-    </div>
-
     <div id="syncModal" class="lightbox" onclick="if(event.target === this) closeSyncModal()">
         <div class="sync-modal-content">
             <span class="close-btn" style="top: 10px; right: 15px; font-size: 30px;"
@@ -2259,6 +2211,11 @@
                     style="background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #fff; padding: 15px; border-radius: 12px;">
                 <input type="password" id="srm-pwd" class="modal-input" placeholder="Portal Password"
                     style="background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #fff; padding: 15px; border-radius: 12px;">
+                <!-- Remember Me / Auto-Sync toggle -->
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-top: -5px; padding: 4px 0;">
+                    <input type="checkbox" id="remember-me" style="width: 18px; height: 18px; accent-color: var(--primary); cursor: pointer; flex-shrink: 0;">
+                    <span style="color: var(--text-sub); font-size: 0.88rem; line-height: 1.4;">Remember Me &amp; Auto-Sync on open <span style="color: var(--primary); font-size: 0.75rem;">(stores credentials in device storage)</span></span>
+                </label>
                 <button class="action-btn" onclick="startLiveSync()" style="margin-top: 5px;">SYNC NOW</button>
             </div>
             <p id="sync-status" style="font-size: 0.85rem; margin-top: 15px; font-weight: bold;"></p>
@@ -2293,6 +2250,9 @@
         let attendanceData = [];
         let timetableData = {};
         let currentBatch = 1;
+        // Chart instances (kept globally so we can destroy before re-render)
+        let attChartInstance = null;
+        let marksChartInstance = null;
 
         // ================= PWA ENFORCEMENT & INSTALLATION =================
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -2415,9 +2375,40 @@
             }
         }
 
+        // ================= AUTO-SYNC ON OPEN =================
+        async function attemptAutoSync() {
+            try {
+                const saved = JSON.parse(localStorage.getItem('autoSyncCreds') || '{}');
+                if (!saved.regNo || !saved.pwd) return;
+                // Rate-limit: don't auto-sync if already synced within last 30 minutes
+                const lastSync = parseInt(localStorage.getItem('lastSyncTime') || '0');
+                if (Date.now() - lastSync < 30 * 60 * 1000) {
+                    console.log('[AutoSync] Skipped — synced recently.');
+                    return;
+                }
+                console.log('[AutoSync] Starting silent background sync...');
+                if (saved.batch) currentBatch = saved.batch;
+                // Pre-fill the hidden modal fields so startLiveSync can read them
+                document.getElementById('srm-reg').value = saved.regNo;
+                document.getElementById('srm-pwd').value = saved.pwd;
+                // Spin the sync button icon to give visual feedback
+                const syncBtn = document.querySelector('.btn-container .icon-btn[onclick*="openSyncModal"]');
+                if (syncBtn) { syncBtn.style.opacity = '0.5'; syncBtn.title = '🔄 Auto-syncing in background...'; }
+                await startLiveSync(true);
+                if (syncBtn) { syncBtn.style.opacity = '1'; syncBtn.title = 'Sync'; }
+                // Clear password from DOM after silent sync
+                document.getElementById('srm-pwd').value = '';
+                console.log('[AutoSync] Done.');
+            } catch (e) {
+                console.warn('[AutoSync] Failed silently:', e);
+            }
+        }
+
         // ================= INITIALIZATION =================
         updateHomeState();
         loadSavedData();
+        // After 1.5s (so cached data renders first), attempt a silent background sync
+        setTimeout(attemptAutoSync, 1500);
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
@@ -2447,12 +2438,6 @@
         });
 
         // ================= UI STATE MANAGEMENT =================
-        function getCurrentNetId() {
-            const profile = JSON.parse(localStorage.getItem('squadProfile') || '{}');
-            const regNoRaw = document.getElementById('srm-reg')?.value || profile.regNo || '';
-            return (regNoRaw.split('@')[0] || '').toLowerCase();
-        }
-
         function updateHomeState() {
             if (isLoggedIn) {
                 document.getElementById('unauth-hero').style.display = 'none';
@@ -2462,16 +2447,6 @@
                 document.getElementById('unauth-hero').style.display = 'block';
                 document.getElementById('auth-dashboard').style.display = 'none';
                 document.getElementById('advisors-section').style.display = 'none';
-            }
-            // Show holiday banner on home page
-            checkAndShowHolidayBanner('home-holiday-banner');
-            // Update holiday name if available
-            let todayLocal = new Date();
-            let tzoffset = todayLocal.getTimezoneOffset() * 60000;
-            let dateStr = (new Date(todayLocal - tzoffset)).toISOString().slice(0, 10);
-            if (srmPlanner[dateStr] && srmPlanner[dateStr].type === 'Holiday') {
-                let nameEl = document.getElementById('home-holiday-name');
-                if (nameEl) nameEl.textContent = srmPlanner[dateStr].title + ' — No classes today!';
             }
         }
 
@@ -2514,27 +2489,42 @@
             currentBatch = batchNum;
         }
 
-        function openSyncModal() { document.getElementById('syncModal').style.display = 'flex'; }
+        function openSyncModal() { 
+            document.getElementById('syncModal').style.display = 'flex';
+            // Pre-fill credentials if user had "Remember Me" enabled
+            try {
+                const saved = JSON.parse(localStorage.getItem('autoSyncCreds') || '{}');
+                if (saved.regNo) {
+                    document.getElementById('srm-reg').value = saved.regNo;
+                    const cb = document.getElementById('remember-me');
+                    if (cb) cb.checked = true;
+                }
+            } catch(e) {}
+        }
         function closeSyncModal() { document.getElementById('syncModal').style.display = 'none'; }
 
-        async function startLiveSync() {
+        async function startLiveSync(isSilent = false) {
             const regNo = document.getElementById('srm-reg').value.trim();
             const pwd = document.getElementById('srm-pwd').value;
+            const rememberMe = document.getElementById('remember-me')?.checked;
             const statusText = document.getElementById('sync-status');
 
             if (!regNo || !pwd) {
-                alert("Please enter your NetID/Email and Password.");
+                if (!isSilent) alert("Please enter your NetID/Email and Password.");
                 return;
             }
 
-            let secondsPassed = 0;
-            statusText.innerHTML = `🔄 Syncing with Academia... <span style="font-family: inherit; font-size: 1.1rem; color: #fff; background: rgba(255,170,0,0.2); padding: 2px 8px; border-radius: 6px;">0s</span>`;
-            statusText.style.color = "var(--primary)";
-            
-            let timerInterval = setInterval(() => {
-                secondsPassed++;
-                statusText.innerHTML = `🔄 Syncing with Academia... <span style="font-family: inherit; font-size: 1.1rem; color: #fff; background: rgba(255,170,0,0.2); padding: 2px 8px; border-radius: 6px;">${secondsPassed}s</span>`;
-            }, 1000);
+            // Save or clear credentials based on Remember Me checkbox
+            if (rememberMe) {
+                localStorage.setItem('autoSyncCreds', JSON.stringify({ regNo, pwd, batch: currentBatch }));
+            } else {
+                localStorage.removeItem('autoSyncCreds');
+            }
+
+            if (!isSilent) {
+                statusText.innerText = "🔄 Syncing with Academia... This takes up to 90 seconds.";
+                statusText.style.color = "var(--primary)";
+            }
 
             try {
                 const res = await fetch(`${BACKEND_URL}/api/start_session`, {
@@ -2544,19 +2534,23 @@
                 });
 
                 const result = await res.json();
-                clearInterval(timerInterval);
 
                 if (!result.success) {
-                    statusText.innerText = `❌ ${result.error} (Failed after ${secondsPassed}s)`;
-                    statusText.style.color = "var(--danger)";
+                    if (!isSilent) {
+                        statusText.innerText = "❌ " + result.error;
+                        statusText.style.color = "var(--danger)";
+                    }
                     return;
                 }
 
-                statusText.innerText = `✅ Success! Synced in ${secondsPassed} seconds.`;
-                statusText.style.color = "var(--success)";
+                if (!isSilent) {
+                    statusText.innerText = "✅ Success! Dashboard Updated.";
+                    statusText.style.color = "var(--success)";
+                }
 
                 isLoggedIn = true;
                 localStorage.setItem("isLoggedIn", "true");
+                localStorage.setItem('lastSyncTime', Date.now().toString());
                 updateHomeState();
 
                 const attList = Array.isArray(result.data) ? result.data : [];
@@ -2574,14 +2568,15 @@
                 try { renderMarks(marksList); } catch (e) { console.error("Marks Render Error:", e); }
                 try { renderTimetable(ttDict); } catch (e) { console.error("Timetable Render Error:", e); }
 
-                setTimeout(() => closeSyncModal(), 2000);
+                if (!isSilent) setTimeout(() => closeSyncModal(), 1500);
 
             } catch (e) {
-                clearInterval(timerInterval);
-                statusText.innerText = "❌ Could not connect to backend server.";
-                statusText.style.color = "var(--danger)";
+                if (!isSilent) {
+                    statusText.innerText = "❌ Could not connect to backend server.";
+                    statusText.style.color = "var(--danger)";
+                }
             } finally {
-                document.getElementById('srm-pwd').value = '';
+                if (!isSilent) document.getElementById('srm-pwd').value = '';
             }
         }
 
@@ -2687,6 +2682,98 @@
                     else if (op < 75) { attPercBadge.innerHTML = '⚠️ RISK ZONE'; attPercBadge.style.color = 'var(--danger)'; }
                     else { attPercBadge.innerHTML = '📈 AVERAGE'; attPercBadge.style.color = 'var(--text-sub)'; }
                 }
+            }
+
+            // ---- ATTENDANCE BAR CHART ----
+            const chartCont = document.getElementById('attendance-chart-container');
+            const chartCanvas = document.getElementById('attendance-chart');
+            if (chartCanvas && attendanceData.length > 0) {
+                if (attChartInstance) { attChartInstance.destroy(); attChartInstance = null; }
+                if (chartCont) chartCont.style.display = 'block';
+
+                const labels = attendanceData.map(s =>
+                    (s.courseTitle || s.name || 'Sub').split(' - ')[0].substring(0, 12)
+                );
+                const dataPoints = attendanceData.map(s => {
+                    const t = parseInt(s.total) || 0, a = parseInt(s.attended) || 0;
+                    return t > 0 ? parseFloat(((a / t) * 100).toFixed(1)) : 0;
+                });
+                const bgColors = dataPoints.map(p =>
+                    p >= 75 ? 'rgba(0,204,102,0.80)' : 'rgba(255,68,68,0.80)'
+                );
+                const borderColors = dataPoints.map(p =>
+                    p >= 75 ? 'rgba(0,204,102,1)' : 'rgba(255,68,68,1)'
+                );
+
+                attChartInstance = new Chart(chartCanvas, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'Attendance %',
+                            data: dataPoints,
+                            backgroundColor: bgColors,
+                            borderColor: borderColors,
+                            borderWidth: 1.5,
+                            borderRadius: 8,
+                            borderSkipped: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: 'rgba(20,20,20,0.95)',
+                                borderColor: 'rgba(255,170,0,0.3)',
+                                borderWidth: 1,
+                                titleColor: '#ffaa00',
+                                bodyColor: '#fff',
+                                callbacks: { label: ctx => ` ${ctx.parsed.y}% attendance` }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                min: 0, max: 100,
+                                ticks: { color: '#888', callback: v => v + '%', font: { size: 11 } },
+                                grid: { color: 'rgba(255,255,255,0.05)' },
+                                border: { color: 'rgba(255,255,255,0.1)' }
+                            },
+                            x: {
+                                ticks: { color: '#aaa', maxRotation: 40, font: { size: 10 } },
+                                grid: { color: 'rgba(255,255,255,0.04)' },
+                                border: { color: 'rgba(255,255,255,0.1)' }
+                            }
+                        }
+                    }
+                });
+
+                // Draw 75% threshold line as annotation via afterDraw plugin
+                const plugin75 = {
+                    id: 'line75_' + Date.now(),
+                    afterDraw(chart) {
+                        const { ctx, chartArea: { left, right }, scales: { y } } = chart;
+                        const y75 = y.getPixelForValue(75);
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.moveTo(left, y75); ctx.lineTo(right, y75);
+                        ctx.strokeStyle = 'rgba(255,170,0,0.6)';
+                        ctx.lineWidth = 1.5;
+                        ctx.setLineDash([6, 4]);
+                        ctx.stroke();
+                        ctx.fillStyle = 'rgba(255,170,0,0.9)';
+                        ctx.font = 'bold 10px Open Sans';
+                        ctx.fillText('75% MIN', left + 4, y75 - 5);
+                        ctx.restore();
+                    }
+                };
+                attChartInstance.options.plugins.line75 = {};
+                Chart.register(plugin75);
+                attChartInstance.update();
+
+            } else if (chartCont) {
+                chartCont.style.display = 'none';
             }
         }
 
@@ -2797,6 +2884,92 @@
                     <button class="share-btn" onclick="generateShareImage('My Est. CGPA', '${estCGPA}', '#ffaa00')" style="margin-top: 25px;"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg> Flex CGPA</button>
                 </div>
             ` + subjectsHTML;
+
+            // ---- MARKS RADAR CHART ----
+            const mChartCont = document.getElementById('marks-chart-container');
+            const mCanvas = document.getElementById('marks-chart');
+            if (mCanvas && grandTotalMax > 0) {
+                if (marksChartInstance) { marksChartInstance.destroy(); marksChartInstance = null; }
+
+                // Build per-subject score percentages for the radar
+                const rLabels = [], rData = [], rScores = [];
+                marksData.forEach(item => {
+                    const code = (item.courseTitle || 'Sub').split(' - ')[0].substring(0, 13);
+                    let perf = item['Test Performance'] || '', sMax = 0, sObt = 0, m2;
+                    const re2 = /([A-Za-z0-9-]+)\/([0-9.]+)\s*\|\s*([0-9.]+)/g;
+                    while ((m2 = re2.exec(perf)) !== null) {
+                        sMax += parseFloat(m2[2]);
+                        sObt += parseFloat(m2[3]);
+                    }
+                    if (sMax > 0) {
+                        rLabels.push(code);
+                        rData.push(parseFloat(((sObt / sMax) * 100).toFixed(1)));
+                        rScores.push(`${sObt.toFixed(1)}/${sMax}`);
+                    }
+                });
+
+                if (rLabels.length > 0) {
+                    if (mChartCont) mChartCont.style.display = 'block';
+                    marksChartInstance = new Chart(mCanvas, {
+                        type: 'radar',
+                        data: {
+                            labels: rLabels,
+                            datasets: [{
+                                label: 'Score %',
+                                data: rData,
+                                backgroundColor: 'rgba(255,170,0,0.10)',
+                                borderColor: '#ffaa00',
+                                pointBackgroundColor: '#ffaa00',
+                                pointBorderColor: '#111',
+                                pointHoverBackgroundColor: '#fff',
+                                pointHoverBorderColor: '#ffaa00',
+                                borderWidth: 2.5,
+                                pointRadius: 5,
+                                pointHoverRadius: 7
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: true,
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    backgroundColor: 'rgba(20,20,20,0.95)',
+                                    borderColor: 'rgba(255,170,0,0.3)',
+                                    borderWidth: 1,
+                                    titleColor: '#ffaa00',
+                                    bodyColor: '#fff',
+                                    callbacks: {
+                                        label: ctx => ` ${ctx.parsed.r}%  (${rScores[ctx.dataIndex] || ''})`,
+                                    }
+                                }
+                            },
+                            scales: {
+                                r: {
+                                    min: 0, max: 100,
+                                    ticks: {
+                                        color: '#777',
+                                        backdropColor: 'transparent',
+                                        stepSize: 25,
+                                        font: { size: 10 },
+                                        callback: v => v + '%'
+                                    },
+                                    grid: { color: 'rgba(255,255,255,0.07)' },
+                                    angleLines: { color: 'rgba(255,255,255,0.07)' },
+                                    pointLabels: {
+                                        color: '#ccc',
+                                        font: { size: 11, family: "'Open Sans', sans-serif", weight: '600' }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                } else if (mChartCont) {
+                    mChartCont.style.display = 'none';
+                }
+            } else if (mChartCont) {
+                mChartCont.style.display = 'none';
+            }
         }
 
         // ================= TIMETABLE RENDERER =================
@@ -2827,9 +3000,16 @@
                 if (parts.length < 2) return false;
                 let [startStr, endStr] = parts;
                 let parseT = (t) => {
-                    let [h, m] = t.trim().split(':').map(Number);
-                    if (h >= 1 && h <= 7) h += 12; // PM adjustment
-                    return h * 60 + m;
+                    let ts = t.trim().replace(/\s+/g, ' ');
+                    let isPM = /pm/i.test(ts), isAM = /am/i.test(ts);
+                    ts = ts.replace(/[aApP][mM]/g, '').trim();
+                    let parts = ts.split(':');
+                    let h = parseInt(parts[0]) || 0;
+                    let mm = parseInt(parts[1]) || 0;
+                    if (isPM && h < 12) h += 12;
+                    else if (isAM && h === 12) h = 0;
+                    else if (!isPM && !isAM && h >= 1 && h <= 7) h += 12; // assume PM for class hours
+                    return h * 60 + mm;
                 };
                 let startMins = parseT(startStr);
                 let endMins = parseT(endStr);
@@ -2889,8 +3069,6 @@
             } else {
                 renderDay(1, null);
             }
-            // Always check holiday on timetable view load
-            checkAndShowHolidayBanner('timetable-holiday-banner');
         }
 
         function renderDay(dayNumber, btnElement) {
@@ -3606,12 +3784,10 @@
                 return;
             }
 
-            const myNetId = getCurrentNetId();
             list.innerHTML = filteredItems.map(p => {
                 const phoneWa = p.phone_no ? p.phone_no.replace(/\D/g, '') : '';
                 const waLink = phoneWa ? `https://wa.me/${phoneWa}?text=Hi! I saw your "${p.title}" ad on SRM Student Hub.` : '';
                 const formatTime = p.created_at ? new Date(p.created_at).toLocaleDateString() : '';
-                const isOwner = myNetId && p.net_id && myNetId === (p.net_id || '').toLowerCase();
                 
                 return `
                 <div class="image-card fade-in-up" style="transform: none; text-align: left; position: relative; padding: 20px;">
@@ -3626,10 +3802,7 @@
                     
                     <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--glass-border); padding-top: 15px;">
                         <span style="font-size: 1.2rem; font-weight: 900; color: #62d5ff; font-family: 'Montserrat', sans-serif;">${p.price ? p.price : 'DM for price'}</span>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            ${isOwner ? `<button onclick="deleteMarketItem(${p.id})" style="background: rgba(255,68,68,0.15); border: 1px solid rgba(255,68,68,0.4); color: #ff4444; padding: 8px 14px; border-radius: 10px; cursor: pointer; font-weight: bold; font-size: 0.85rem;">🗑️ Delete</button>` : ''}
-                            ${waLink ? `<a href="${waLink}" target="_blank" style="background: #25D366; color: #fff; font-weight: bold; padding: 8px 16px; border-radius: 10px; text-decoration: none; font-size: 0.9rem; display: flex; align-items: center; gap: 8px;"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347zM12 21.826A9.826 9.826 0 1 1 21.826 12 9.837 9.837 0 0 1 12 21.826M12 2C6.477 2 2 6.477 2 12c0 1.761.458 3.425 1.282 4.881L2 22l5.253-1.252A9.974 9.974 0 0 0 12 22c5.523 0 10-4.477 10-10S17.523 2 12 2"/></svg> Contact</a>` : ''}
-                        </div>
+                        ${waLink ? `<a href="${waLink}" target="_blank" style="background: #25D366; color: #fff; font-weight: bold; padding: 8px 16px; border-radius: 10px; text-decoration: none; font-size: 0.9rem; display: flex; align-items: center; gap: 8px;"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347zM12 21.826A9.826 9.826 0 1 1 21.826 12 9.837 9.837 0 0 1 12 21.826M12 2C6.477 2 2 6.477 2 12c0 1.761.458 3.425 1.282 4.881L2 22l5.253-1.252A9.974 9.974 0 0 0 12 22c5.523 0 10-4.477 10-10S17.523 2 12 2"/></svg> Contact</a>` : ''}
                     </div>
                 </div>`;
             }).join('');
@@ -3686,21 +3859,6 @@
             } catch(e) {
                 status.style.color = 'var(--danger)'; status.innerText = '❌ Could not connect to server.';
             }
-        }
-
-        async function deleteMarketItem(id) {
-            if (!confirm('Are you sure you want to delete this listing?')) return;
-            const netId = getCurrentNetId();
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/marketplace/delete/${id}`, {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ net_id: netId })
-                });
-                const result = await res.json();
-                if (result.success) { loadMarketplace(); }
-                else { alert(result.error || 'Could not delete item.'); }
-            } catch(e) { alert('Connection error.'); }
         }
 
         // ============ CAMPUS WALL ============
@@ -3793,12 +3951,10 @@
                     return;
                 }
 
-                const myNetId = getCurrentNetId();
                 list.innerHTML = cabs.map(p => {
                     const phoneWa = p.phone_no ? p.phone_no.replace(/\D/g, '') : '';
                     const waLink = phoneWa ? `https://wa.me/${phoneWa}?text=Hi! I saw your Cab ride to ${p.destination} on SRM Hub.` : '';
                     const formattedDate = new Date(p.travel_date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-                    const isOwner = myNetId && p.net_id && myNetId === (p.net_id || '').toLowerCase();
                     
                     return `
                     <div class="image-card fade-in-up" style="transform: none; text-align: left; padding: 20px; border-left: 4px solid #00cc66;">
@@ -3809,10 +3965,7 @@
                                 <div style="font-size: 0.9rem; color: var(--text-sub); margin-bottom: 15px;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 5px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg> ${p.spots || 'Spots available'}</div>
                                 <div style="font-size: 0.8rem; color: #888;">Posted by ${p.creator_name || 'Student'}</div>
                             </div>
-                            <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end;">
-                                ${waLink ? `<a href="${waLink}" target="_blank" style="background: #25D366; color: #fff; text-decoration: none; padding: 10px 15px; border-radius: 12px; font-weight: bold; font-size: 0.9rem; white-space: nowrap;">Chat ↗</a>` : ''}
-                                ${isOwner ? `<button onclick="deleteCab(${p.id})" style="background: rgba(255,68,68,0.15); border: 1px solid rgba(255,68,68,0.4); color: #ff4444; padding: 6px 12px; border-radius: 10px; cursor: pointer; font-weight: bold; font-size: 0.8rem;">🗑️ Delete</button>` : ''}
-                            </div>
+                            ${waLink ? `<a href="${waLink}" target="_blank" style="background: #25D366; color: #fff; text-decoration: none; padding: 10px 15px; border-radius: 12px; font-weight: bold; font-size: 0.9rem; white-space: nowrap;">Chat ↗</a>` : ''}
                         </div>
                     </div>`;
                 }).join('');
@@ -3975,150 +4128,6 @@
             } catch(e) {
                 status.style.color = 'var(--danger)'; status.innerText = '❌ Could not connect to server.';
             }
-        }
-
-        async function deleteCab(id) {
-            if (!confirm('Are you sure you want to delete this ride?')) return;
-            const netId = getCurrentNetId();
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/cabs/delete/${id}`, {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ net_id: netId })
-                });
-                const result = await res.json();
-                if (result.success) { loadCabs(); }
-                else { alert(result.error || 'Could not delete ride.'); }
-            } catch(e) { alert('Connection error.'); }
-        }
-
-        // ============ LOST & FOUND ============
-        let allLFItems = [];
-        let currentLFCategory = 'All';
-
-        function switchLFCategory(cat, el) {
-            document.querySelectorAll('#lf-tabs .tab-btn').forEach(b => b.classList.remove('active'));
-            el.classList.add('active');
-            currentLFCategory = cat;
-            renderLostFound();
-        }
-
-        async function loadLostFound() {
-            const list = document.getElementById('lf-list');
-            if (!list) return;
-            list.innerHTML = '<div class="css-loader" style="margin: 40px auto;"></div>';
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/lostfound`);
-                allLFItems = await res.json();
-                renderLostFound();
-            } catch (e) {
-                list.innerHTML = `<div class="image-card" style="text-align:center; color: var(--danger); padding: 40px;">Could not load Lost & Found.</div>`;
-            }
-        }
-
-        function renderLostFound() {
-            const list = document.getElementById('lf-list');
-            if (!list) return;
-
-            const filtered = currentLFCategory === 'All' ? allLFItems : allLFItems.filter(i => i.category === currentLFCategory);
-            const myNetId = getCurrentNetId();
-
-            if (filtered.length === 0) {
-                list.innerHTML = `
-                <div class="image-card fade-in-up" style="transform: none; text-align: center; opacity: 0.6; border: 1px dashed var(--glass-border); padding: 35px;">
-                    <h3 style="color: var(--text-sub); margin: 0 0 10px 0; font-style: italic; font-size: 1rem;">No items reported yet.</h3>
-                    <p style="color: var(--text-sub); font-size: 0.85rem; margin: 0;">Click "+ Report Item" to post.</p>
-                </div>`;
-                return;
-            }
-
-            list.innerHTML = filtered.map(p => {
-                const formatTime = p.created_at ? new Date(p.created_at).toLocaleDateString() : '';
-                const isOwner = myNetId && p.net_id && myNetId === (p.net_id || '').toLowerCase();
-                const catColor = p.category === 'Lost' ? '#ff4444' : '#00cc66';
-                const catIcon = p.category === 'Lost' ? '❓' : '✅';
-
-                return `
-                <div class="image-card fade-in-up" style="transform: none; text-align: left; position: relative; padding: 20px; border-left: 4px solid ${catColor};">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
-                        <span style="background: ${catColor}22; color: ${catColor}; padding: 4px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: bold; text-transform: uppercase;">${catIcon} ${p.category || 'Item'}</span>
-                        ${isOwner ? `<button onclick="deleteLostFound(${p.id})" style="background: rgba(255,68,68,0.15); border: 1px solid rgba(255,68,68,0.4); color: #ff4444; padding: 5px 12px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 0.8rem;">🗑️ Delete</button>` : ''}
-                    </div>
-                    
-                    <h3 style="color: var(--text-main); margin: 0 0 5px 0; font-size: 1.2rem; font-family: 'Montserrat', sans-serif;">${p.title}</h3>
-                    <div style="font-size:0.8rem; color: var(--text-sub); margin-bottom: 10px;">By <b style="color: var(--primary);">${p.poster_name}</b> &bull; ${formatTime}</div>
-                    
-                    ${p.location ? `<div style="font-size: 0.85rem; color: var(--primary); margin-bottom: 10px;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 5px;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg> ${p.location}</div>` : ''}
-                    
-                    ${p.image_url ? `<img src="${p.image_url}" alt="${p.title}" style="max-height: 250px; width: 100%; object-fit: cover; border-radius: 10px; margin-bottom: 12px; border: 1px solid var(--glass-border);" onerror="this.style.display='none'">` : ''}
-                    
-                    <p style="color: var(--text-sub); font-size: 0.95rem; line-height: 1.5; margin: 0;">${p.description || ''}</p>
-                </div>`;
-            }).join('');
-        }
-
-        async function submitLostFound() {
-            const title = document.getElementById('lf-title').value.trim();
-            const catEl = document.getElementById('lf-category');
-            const category = catEl.options[catEl.selectedIndex].value;
-            const status = document.getElementById('lf-status');
-            const imageFile = document.getElementById('lf-image-file')?.files[0];
-
-            if (!title || !category) {
-                status.style.color = 'var(--danger)'; status.innerText = 'Item name and category are required!';
-                return;
-            }
-
-            const profile = JSON.parse(localStorage.getItem('squadProfile') || '{}');
-            const netId = getCurrentNetId();
-
-            let image_url = '';
-            try {
-                status.style.color = 'var(--primary)'; status.innerText = 'Processing...';
-                if (imageFile) image_url = await compressImage(imageFile);
-            } catch(e) { console.error('Compression failed', e); }
-
-            status.style.color = 'var(--primary)'; status.innerText = 'Posting...';
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/lostfound/submit`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        title, category,
-                        description: document.getElementById('lf-desc').value,
-                        location: document.getElementById('lf-location').value,
-                        image_url: image_url,
-                        poster_name: profile.name || 'Student',
-                        net_id: netId
-                    })
-                });
-                const result = await res.json();
-                if (result.success) {
-                    status.style.color = 'var(--success)'; status.innerText = '✅ Item Reported!';
-                    ['lf-title','lf-desc','lf-location'].forEach(id => document.getElementById(id).value = '');
-                    catEl.selectedIndex = 0;
-                    setTimeout(() => { document.getElementById('lfSubmitModal').style.display = 'none'; loadLostFound(); }, 1500);
-                } else {
-                    status.style.color = 'var(--danger)'; status.innerText = '❌ ' + result.error;
-                }
-            } catch(e) {
-                status.style.color = 'var(--danger)'; status.innerText = '❌ Connection error.';
-            }
-        }
-
-        async function deleteLostFound(id) {
-            if (!confirm('Are you sure you want to delete this report?')) return;
-            const netId = getCurrentNetId();
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/lostfound/delete/${id}`, {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ net_id: netId })
-                });
-                const result = await res.json();
-                if (result.success) { loadLostFound(); }
-                else { alert(result.error || 'Could not delete.'); }
-            } catch(e) { alert('Connection error.'); }
         }
 
         // ============ AUTO-NOTIFICATION PROMPT FOR ALL USERS ============
